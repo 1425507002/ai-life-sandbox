@@ -55,3 +55,12 @@ pnpm test
 ```
 
 在本机 Codex Windows 沙箱的中文路径下，如果 esbuild 无法解析依赖链接，可将项目临时映射到盘符后执行测试；这只是环境 workaround，不是应用运行时要求。
+
+## Git 版本与项目管控
+
+- 本项目已接入 GitHub：`https://github.com/1425507002/ai-life-sandbox.git`。
+- 默认分支为 `main`；每个可独立验证的功能增加、Bug 修复或重要文档变更都要单独提交并推送。
+- 提交前检查 `git status`，完成后运行匹配的测试/构建/浏览器验收，并核验远程分支已更新。
+- 当前项目首次提交为 `bad5104 chore: initialize AI life sandbox`。
+- 优先使用 `git revert` 等可恢复方式回档；未经明确授权不得强制推送、删除分支或执行破坏性重置。
+- 本项目 Git 提交身份仅配置在本仓库内：显示名 `xinxin`，邮箱使用 GitHub 隐私 noreply 地址。
