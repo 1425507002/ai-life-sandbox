@@ -1,4 +1,4 @@
-import type { ActionResult, GameState, ScriptPackage } from '../types'
+import type { ActionResult, GameState, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
 import { generateSuggestedActions } from './suggestionEngine'
 
 const pad = (value: number) => value.toString().padStart(2, '0')
@@ -17,7 +17,81 @@ function cloneState(state: GameState): GameState {
   return structuredClone(state)
 }
 
-function findAction(state: GameState, input: string) {
+function readPath(state: GameState, path: string): unknown {
+  return path.split('.').reduce<unknown>((value, key) => {
+    if (!value || typeof value !== 'object') return undefined
+    return (value as Record<string, unknown>)[key]
+  }, state)
+}
+
+function conditionPasses(state: GameState, condition: RuleCondition) {
+  const actual = readPath(state, condition.path)
+  switch (condition.operator) {
+    case 'min': return typeof actual === 'number' && typeof condition.value === 'number' && actual >= condition.value
+    case 'max': return typeof actual === 'number' && typeof condition.value === 'number' && actual <= condition.value
+    case 'equals': return actual === condition.value
+    case 'includes': return Array.isArray(actual) && actual.includes(condition.value)
+    case 'not-includes': return Array.isArray(actual) && !actual.includes(condition.value)
+    default: return false
+  }
+}
+
+function stateDiff(before: GameState, after: GameState): StateDiff[] {
+  const diffs: StateDiff[] = []
+  const values: Array<[string, string, string | number, string | number]> = [
+    ['player.health', '状态', before.player.health, after.player.health],
+    ['player.stamina', '精力', before.player.stamina, after.player.stamina],
+    ['player.money', '铜币', before.player.money, after.player.money],
+    ['player.reputation', '声望', before.player.reputation, after.player.reputation],
+    ['world.time', '时间', before.world.time, after.world.time],
+    ['world.location', '地点', before.world.location, after.world.location],
+  ]
+  values.forEach(([key, label, from, to]) => { if (from !== to) diffs.push({ key, label, before: from, after: to }) })
+  before.npcs.forEach((npc) => {
+    const nextNpc = after.npcs.find((item) => item.id === npc.id)
+    if (nextNpc && npc.relationship !== nextNpc.relationship) diffs.push({ key: `npcs.${npc.id}.relationship`, label: `${npc.name}关系`, before: npc.relationship, after: nextNpc.relationship })
+  })
+  return diffs
+}
+
+function scheduleRuleEvent(next: GameState, script: ScriptPackage, ruleId: string) {
+  const templateId = script.rules?.[ruleId]?.delayedEventId
+  const template = templateId ? script.events?.find((event) => event.id === templateId) : undefined
+  if (!template) return
+  const scheduled = next.scheduledEvents ?? []
+  if (scheduled.some((event) => event.id === template.id)) return
+  next.scheduledEvents = [...scheduled, { ...template, dueTurn: next.turn + template.dueTurn }]
+}
+
+function processDueEvents(next: GameState) {
+  const due = (next.scheduledEvents ?? []).filter((event) => event.dueTurn <= next.turn)
+  next.scheduledEvents = (next.scheduledEvents ?? []).filter((event) => event.dueTurn > next.turn)
+  due.forEach((event) => {
+    if (event.fact) next.knownFacts = [...new Set([...next.knownFacts, event.fact])]
+    if (event.npcId && event.relationshipDelta) {
+      const npc = next.npcs.find((item) => item.id === event.npcId)
+      if (npc) { npc.relationship += event.relationshipDelta; npc.lastInteraction = event.title }
+    }
+    next.world.narrative.unshift(event.body)
+    next.world.currentFocus = event.title
+    next.history.unshift({ id: `event-${next.turn}-${event.id}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: event.title, body: event.body, outcome: 'success', tags: [...event.tags, '延迟事件'] })
+  })
+}
+
+function advanceNpcSchedules(next: GameState) {
+  if (!next.npcs.length) return
+  const npc = next.npcs[next.turn % next.npcs.length]
+  if (!npc.schedule?.length) return
+  const status = npc.schedule[(next.turn + 1) % npc.schedule.length]
+  npc.status = status
+  if (next.turn % 2 === 0) {
+    const note = `${npc.name}：${status}`
+    next.world.publicNews = [note, ...next.world.publicNews.filter((item) => item !== note)].slice(0, 4)
+    next.history.unshift({ id: `npc-${next.turn}-${npc.id}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: `${npc.name}也在行动`, body: note, outcome: 'success', tags: ['NPC自主', npc.role] })
+  }
+}
+
+function findAction(state: GameState, input: string): SuggestedAction | string | undefined {
   const normalized = input.toLowerCase()
   const exact = state.suggestedActions.find((action) => action.title.toLowerCase() === normalized)
   if (exact) return exact
@@ -42,9 +116,11 @@ function genericOutcome(state: GameState, input: string, script: ScriptPackage):
   next.player.stamina = Math.max(0, next.player.stamina - 3)
   next.world.narrative = [`你决定先观察一下周围，再处理“${input}”这件事。`, '这不是一个能立刻得到答案的行动，但你记下了几个值得继续确认的细节。']
   next.world.currentFocus = `继续确认：${input}`
-  next.history.unshift({ id: `e-${Date.now()}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'] })
+  next.history.unshift({ id: `e-${Date.now()}`, actionId: `freeform:${input.toLowerCase()}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
+  advanceNpcSchedules(next)
+  processDueEvents(next)
   next.suggestedActions = generateSuggestedActions(next, script)
-  return { outcome: 'unknown', title: '事情还没有定论', narrative: next.world.narrative, feedback: '这个行动可以开始，但现在更像是一个需要继续观察的方向。', timeLabel: '约 25 分钟', deltas: ['精力 -3', '新增一个待确认事项'], state: next }
+  return { outcome: 'unknown', title: '事情还没有定论', narrative: next.world.narrative, feedback: '这个行动可以开始，但现在更像是一个需要继续观察的方向。', timeLabel: '约 25 分钟', deltas: ['精力 -3', '新增一个待确认事项'], stateDiff: stateDiff(state, next), state: next }
 }
 
 export function resolveAction(state: GameState, input: string, script: ScriptPackage): ActionResult {
@@ -55,11 +131,15 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   if (typeof match !== 'object' || !match) return genericOutcome(state, cleanInput, script)
 
   const next = cloneState(state)
+  const actionRule = match.ruleId ?? match.id
+  const rule = script.rules?.[actionRule]
+  if (rule?.allowedLocations?.length && !rule.allowedLocations.some((location) => next.world.location.includes(location))) return { outcome: 'refused', title: '现在不在合适的地方', narrative: [`你看了看周围，这里不是“${match.title}”适合发生的地方。`], feedback: rule.blockedMessage ?? '先移动到合适的地点，再尝试这个行动。', timeLabel: '未推进时间', deltas: ['地点条件不满足'], state }
+  const failedCondition = rule?.conditions?.find((condition) => !conditionPasses(next, condition))
+  if (failedCondition) return { outcome: 'refused', title: '条件还不满足', narrative: [failedCondition.message ?? `你还缺少完成“${match.title}”的必要条件。`], feedback: rule?.blockedMessage ?? '行动没有执行，世界状态保持不变。', timeLabel: '未推进时间', deltas: ['前置条件不满足'], state }
   if (match.moneyCost > next.player.money) return { outcome: 'refused', title: '钱不够', narrative: [`你检查了一下口袋，只有 ${next.player.money} 枚铜币。`, `“${match.title}”至少需要 ${match.moneyCost} 枚铜币，今天还不能这样做。`], feedback: '当前资金不足，行动没有执行。', timeLabel: '未推进时间', deltas: [`需要 ${match.moneyCost} 枚铜币`, `当前只有 ${next.player.money} 枚`], state }
   if (match.staminaCost > next.player.stamina) return { outcome: 'refused', title: '精力不够', narrative: ['你刚站起身就感到身体还没有恢复。', `这件事需要大约 ${match.staminaCost} 点精力，而你现在只有 ${next.player.stamina} 点。`], feedback: '先休息或换一个轻松的行动会更稳妥。', timeLabel: '未推进时间', deltas: [`需要精力 ${match.staminaCost}`, `当前精力 ${next.player.stamina}`], state }
 
   next.turn += 1
-  const actionRule = match.ruleId ?? match.id
   next.player.money -= match.moneyCost
   next.player.stamina = Math.max(0, next.player.stamina - match.staminaCost)
   next.world.time = advanceTime(next, match.timeCost)
@@ -127,13 +207,18 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     deltas.push('获得物品：被海水泡白的蓝绳', '状态 -2')
   }
 
-  next.history.unshift({ id: `e-${Date.now()}`, actionId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'] })
+  next.world.narrative = narrative
+  scheduleRuleEvent(next, script, actionRule)
+  advanceNpcSchedules(next)
+  processDueEvents(next)
+  next.history.unshift({ id: `e-${Date.now()}`, actionId: match.id, ruleId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
   next.suggestedActions = generateSuggestedActions(next, script)
-  return { outcome, title, narrative, feedback: outcome === 'partial' ? '行动完成了一部分，也留下了新的代价或线索。' : '行动已经结算，世界留下了新的变化。', timeLabel: `约 ${match.timeCost} 分钟`, deltas, state: next }
+  return { outcome, title, narrative: next.world.narrative, feedback: outcome === 'partial' ? '行动完成了一部分，也留下了新的代价或线索。' : '行动已经结算，世界留下了新的变化。', timeLabel: `约 ${match.timeCost} 分钟`, deltas, stateDiff: stateDiff(state, next), state: next }
 }
 
 export function buildInitialState(script: ScriptPackage): GameState {
   const next = cloneState(script.world.seedState)
   next.world.narrative = [...script.world.opening]
+  next.suggestedActions = generateSuggestedActions(next, script)
   return next
 }

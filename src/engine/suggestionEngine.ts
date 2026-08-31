@@ -60,13 +60,16 @@ function copyFor(action: SuggestedAction, variantIndex: number): ActionCopy {
 export function generateSuggestedActions(state: GameState, script: ScriptPackage): SuggestedAction[] {
   const source = script.world.seedState.suggestedActions
   if (!source.length) return []
-  const latestActionId = state.history.find((event) => event.actionId)?.actionId
+  const latestAction = state.history.find((event) => event.ruleId || (event.actionId && !event.actionId.startsWith('freeform:')))
+  const latestRuleId = latestAction?.ruleId ?? latestAction?.actionId
+  const latestTitle = latestAction?.title
   const generated = source.map((action, index) => {
     const ruleId = action.ruleId ?? action.id
     const variantIndex = Math.max(0, state.turn - 1 + index) % 3
     const copy = copyFor({ ...action, ruleId }, variantIndex)
     return { ...action, id: `${script.manifest.id}:${ruleId}:${variantIndex}`, ruleId, title: copy.title, description: copy.description }
-  })
-  const fresh = latestActionId ? generated.filter((action) => action.ruleId !== latestActionId) : generated
-  return fresh.length >= Math.min(3, generated.length) ? fresh : generated
+  }).filter((action, index, all) => all.findIndex((candidate) => candidate.id === action.id || candidate.title === action.title) === index)
+  const fresh = generated.filter((action) => action.ruleId !== latestRuleId && action.title !== latestTitle)
+  if (fresh.length >= Math.min(3, generated.length)) return fresh
+  return generated.filter((action) => action.title !== latestTitle)
 }

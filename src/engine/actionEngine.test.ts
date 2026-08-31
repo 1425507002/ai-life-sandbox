@@ -14,7 +14,9 @@ describe('action engine', () => {
     expect(result.state.world.location).toContain('晨雾集市')
     expect(result.state.turn).toBe(state.turn + 1)
     expect(result.state.player.stamina).toBeLessThan(state.player.stamina)
-    expect(result.state.history[0].actionId).toBe('market')
+    expect(result.state.history[0].ruleId).toBe('market')
+    expect(result.state.history[0].actionId).toContain('dawnmere:market:')
+    expect(result.state.history[0].stateDiff?.some((diff) => diff.key === 'player.stamina')).toBe(true)
     expect(result.state.suggestedActions.every((action) => action.ruleId !== 'market')).toBe(true)
     expect(result.state.suggestedActions.map((action) => action.title)).not.toEqual(state.suggestedActions.map((action) => action.title))
 
@@ -49,5 +51,31 @@ describe('action engine', () => {
     expect(result.outcome).toBe('unknown')
     expect(result.state.history[0].tags).toContain('待确认')
     expect(result.state.world.currentFocus).toContain('观察屋顶上的鸟')
+  })
+
+  it('blocks a rule when its DSL condition is not met', () => {
+    const state = buildInitialState(script)
+    state.player.health = 5
+    const result = resolveAction(state, '去北坡雾林采药', script)
+
+    expect(result.outcome).toBe('refused')
+    expect(result.deltas).toContain('前置条件不满足')
+    expect(result.state.turn).toBe(state.turn)
+  })
+
+  it('schedules and resolves a delayed event without AI', () => {
+    const state = buildInitialState(script)
+    const result = resolveAction(state, '去铁匠铺帮一会儿', script)
+
+    expect(result.state.scheduledEvents?.some((event) => event.id === 'dawnmere-smith-trial')).toBe(true)
+    const next = resolveAction(result.state, result.state.suggestedActions[0].title, script)
+    expect(next.state.history.some((event) => event.title === '奥伦留了一句口信')).toBe(true)
+  })
+
+  it('lets NPCs advance their own schedule as the world progresses', () => {
+    const state = buildInitialState(script)
+    const result = resolveAction(state, '去集市看看今天有什么新鲜事', script)
+
+    expect(result.state.npcs.some((npc) => npc.status !== script.world.seedState.npcs.find((item) => item.id === npc.id)?.status)).toBe(true)
   })
 })

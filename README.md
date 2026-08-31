@@ -20,6 +20,9 @@
 - PWA 静态壳与离线资源缓存
 - 行动呈现模式：选择优先、丰富建议、自由行动；设置会保存并影响每回合行动入口
 - 第二阶段本地行动生成：行动结算后刷新行动变体，排除最近行动；无 API 时仍可继续游玩
+- 第二阶段规则扩展：剧本/候选 schema 校验、条件 DSL、延迟事件、NPC schedule 和状态 diff
+- AI 候选适配：AI 只能提交经过校验的行动候选，不能直接修改游戏事实
+- 桌面与移动端 Playwright 烟雾测试；生产构建生成 PWA 离线静态壳
 
 ## 启动
 
@@ -73,8 +76,9 @@ src/
   engine/actionEngine.ts   确定性行动结算
   engine/actionPlanner.ts  行动呈现模式与排序
   engine/suggestionEngine.ts 本地行动变体生成
-  engine/aiProvider.ts     OpenAI-compatible 叙事适配
-  storage.ts               IndexedDB 与导出下载
+  engine/scriptSchema.ts   剧本包、候选与运行时校验
+  engine/aiProvider.ts     OpenAI-compatible 叙事和候选适配
+  storage.ts               IndexedDB、导出下载与载荷校验
   store.ts                 游戏状态与剧本运行时
   App.tsx                  通用页面壳
   styles.css               原创纸张/手账视觉系统
@@ -83,4 +87,4 @@ design/                    视觉概念稿
 
 ## 路线
 
-下一步优先补充：更严格的剧本 schema、角色创建、事件条件 DSL、规则 diff 展示、更多端到端测试，以及面向作者的剧本编辑器。第一阶段暂不做账号、多人、云同步、复杂战斗和既有 IP 内容。
+第二阶段已完成。下一步进入阶段 3：首次进入角色创建向导、剧本编辑器、事件/规则可视化、剧本预览和创作者版本管理。第一阶段暂不做账号、多人、云同步、复杂战斗和既有 IP 内容。

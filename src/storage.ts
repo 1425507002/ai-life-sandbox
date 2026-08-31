@@ -12,6 +12,18 @@ interface PersistedRuntime {
   scripts?: ScriptPackage[]
 }
 
+export function validateRuntimePayload(input: unknown): input is PersistedRuntime {
+  if (!input || typeof input !== 'object') return false
+  const candidate = input as Partial<PersistedRuntime>
+  const provider = candidate.providerConfig
+  return Boolean(
+    candidate.sessions && typeof candidate.sessions === 'object' && !Array.isArray(candidate.sessions) &&
+    typeof candidate.activeScriptId === 'string' && provider &&
+    typeof provider.endpoint === 'string' && typeof provider.apiKey === 'string' && typeof provider.model === 'string' &&
+    (!candidate.scripts || Array.isArray(candidate.scripts)),
+  )
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1)

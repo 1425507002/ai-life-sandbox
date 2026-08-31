@@ -19,6 +19,17 @@ const dawnmere: ScriptPackage = {
     surface: '#fffaf2',
     sky: '#dbe9ee',
   },
+  characterCreation: { enabled: true, roles: ['普通居民', '外来旅人', '工坊学徒'], professions: ['木匠学徒', '面包房帮工', '自由手艺人'], traits: ['耐心', '手巧', '观察敏锐', '不喜欢欠人情', '对远方好奇'] },
+  rules: {
+    forest: { id: 'forest', conditions: [{ path: 'player.health', operator: 'min', value: 10, message: '你的身体状态还不错，但至少要保留 10 点状态才能进入雾林。' }], blockedMessage: '先休息或处理伤口，再去雾林。', delayedEventId: 'dawnmere-forest-return' },
+    market: { id: 'market', delayedEventId: 'dawnmere-market-rumor' },
+    smith: { id: 'smith', delayedEventId: 'dawnmere-smith-trial' },
+  },
+  events: [
+    { id: 'dawnmere-market-rumor', dueTurn: 2, title: '米拉带来一条新消息', body: '米拉在你离开集市后听见了更具体的消息：旧桥修缮可能会提前开始。', tags: ['人物', '线索'], fact: '旧桥修缮可能会提前开始', npcId: 'mira', relationshipDelta: 1 },
+    { id: 'dawnmere-smith-trial', dueTurn: 1, title: '奥伦留了一句口信', body: '奥伦让人捎来口信：如果你明早还愿意来，试工可以从整理木柄开始。', tags: ['工作', '安排'], fact: '奥伦的试工从整理木柄开始', npcId: 'oren', relationshipDelta: 2 },
+    { id: 'dawnmere-forest-return', dueTurn: 2, title: '药草师认出了你的药草', body: '塞拉看过你带回的药草后，指出其中一株可以换成更好的止痛草。', tags: ['探索', '人物'], fact: '塞拉愿意帮你辨认药草', npcId: 'sela', relationshipDelta: 1 },
+  ],
   world: {
     startingLocation: '晨雾镇 · 住处',
     opening: [
@@ -39,10 +50,10 @@ const dawnmere: ScriptPackage = {
         publicNews: ['南门旧桥需要修缮', '铁匠铺正在招一名短工', '集市今天有来自河谷的布料'],
       },
       npcs: [
-        { id: 'mira', name: '米拉', role: '邻居 · 面包师', avatar: 'M', summary: '每天清晨第一个开门，知道镇上大多数新鲜消息。', relationship: 26, lastInteraction: '昨天借给你一小袋燕麦', status: '正在准备早市面包' },
-        { id: 'oren', name: '奥伦', role: '铁匠', avatar: 'O', summary: '话少，做事稳，最近因为旧桥维修多了不少活。', relationship: 8, lastInteraction: '五天前在铺门口点头致意', status: '已经在铁砧旁工作' },
-        { id: 'sela', name: '塞拉', role: '草药师', avatar: 'S', summary: '住在镇北边，常去雾林采药，讨厌浪费药材。', relationship: 14, lastInteraction: '上周帮你处理了手上的小伤', status: '准备出门采集' },
-        { id: 'tavin', name: '塔文', role: '渡船人', avatar: 'T', summary: '熟悉河道和南边村落，午后通常会在渡口休息。', relationship: 3, lastInteraction: '还没有真正聊过', status: '正在检查渡船缆绳' },
+        { id: 'mira', name: '米拉', role: '邻居 · 面包师', avatar: 'M', summary: '每天清晨第一个开门，知道镇上大多数新鲜消息。', relationship: 26, lastInteraction: '昨天借给你一小袋燕麦', status: '正在准备早市面包', schedule: ['正在准备早市面包', '给邻居送出第一炉面包', '在门口听镇民谈旧桥'] },
+        { id: 'oren', name: '奥伦', role: '铁匠', avatar: 'O', summary: '话少，做事稳，最近因为旧桥维修多了不少活。', relationship: 8, lastInteraction: '五天前在铺门口点头致意', status: '已经在铁砧旁工作', schedule: ['已经在铁砧旁工作', '去南门查看旧桥用的铆钉', '把试工材料摆到门边'] },
+        { id: 'sela', name: '塞拉', role: '草药师', avatar: 'S', summary: '住在镇北边，常去雾林采药，讨厌浪费药材。', relationship: 14, lastInteraction: '上周帮你处理了手上的小伤', status: '准备出门采集', schedule: ['准备出门采集', '在屋后晾晒药草', '整理今天采到的根茎'] },
+        { id: 'tavin', name: '塔文', role: '渡船人', avatar: 'T', summary: '熟悉河道和南边村落，午后通常会在渡口休息。', relationship: 3, lastInteraction: '还没有真正聊过', status: '正在检查渡船缆绳', schedule: ['正在检查渡船缆绳', '在渡口修补旧木桩', '替南边村民捎来一封信'] },
       ],
       locations: [
         { id: 'home', name: '住处', kind: '生活', description: '一间向东的小屋，窗台能看到镇钟和北坡。', distance: '当前位置', available: true },
@@ -86,6 +97,17 @@ const tideglass: ScriptPackage = {
     surface: '#fbfffd',
     sky: '#d7e8e9',
   },
+  characterCreation: { enabled: true, roles: ['港口居民', '外来水手', '船具店帮工'], professions: ['船具店帮工', '码头搬运工', '自由水手'], traits: ['观察敏锐', '不喜欢欠人情', '对远方好奇', '记性很好'] },
+  rules: {
+    tavern: { id: 'tavern', delayedEventId: 'tideglass-tavern-rumor' },
+    lighthouse: { id: 'lighthouse', conditions: [{ path: 'player.health', operator: 'min', value: 8, message: '礁石路很滑，至少保留 8 点状态再出发。' }], delayedEventId: 'tideglass-lighthouse-key' },
+    dock: { id: 'dock', delayedEventId: 'tideglass-dock-work' },
+  },
+  events: [
+    { id: 'tideglass-tavern-rumor', dueTurn: 1, title: '水手又补上半句传闻', body: '昨天窗边的水手在你离开后又想起一件事：那艘旧货船的船尾有新换过的漆。', tags: ['酒馆', '传闻'], fact: '陌生货船船尾有新换过的漆' },
+    { id: 'tideglass-lighthouse-key', dueTurn: 2, title: '艾尔娜找到了半截钥匙', body: '艾尔娜在灯塔外的碎石里找到了半截旧钥匙，另一半可能还在外港。', tags: ['灯塔', '线索'], fact: '灯塔钥匙只找到半截', npcId: 'elna', relationshipDelta: 2 },
+    { id: 'tideglass-dock-work', dueTurn: 1, title: '乔恩替你留了一个位置', body: '乔恩把明早的短工名单压在仓棚门后，特意给你留了一个位置。', tags: ['码头', '工作'], fact: '明早西堤仓棚有一份短工', npcId: 'jon', relationshipDelta: 1 },
+  ],
   world: {
     startingLocation: '灰潮港 · 灯塔街',
     opening: ['海风把盐味送进半开的窗。', '港口刚刚退潮，湿石路上留下了一层闪光的水。', '今天的第一班货船午后靠岸，而你还没有决定要不要去码头看看。'],
@@ -93,9 +115,9 @@ const tideglass: ScriptPackage = {
       player: { name: '沈原', age: 27, role: '港口居民', profession: '船具店帮工', mood: '有些犹豫', health: 76, stamina: 62, money: 58, reputation: 18, traits: ['观察敏锐', '不喜欢欠人情', '对远方好奇'] },
       world: { day: 12, time: '黄昏 · 17:10', season: '晚夏', weather: '海风', location: '灰潮港 · 灯塔街', region: '西海岸', atmosphere: '潮湿 · 有人声', headline: '一艘没有挂出港旗的旧货船正在外港减速。', narrative: [], currentFocus: '决定今晚是否去码头', publicNews: ['西堤仓库临时招工', '灯塔管理员在找丢失的钥匙', '外港有一艘陌生货船'] },
       npcs: [
-        { id: 'rhea', name: '瑞娅', role: '船具店老板', avatar: 'R', summary: '精打细算，但会记住每个认真工作的人。', relationship: 31, lastInteraction: '今天下午一起盘点了麻绳', status: '正在关店' },
-        { id: 'jon', name: '乔恩', role: '码头搬运工', avatar: 'J', summary: '消息灵通，喜欢讲一半故事，再看别人会不会追问。', relationship: 11, lastInteraction: '三天前在酒馆打过照面', status: '在西堤等活' },
-        { id: 'elna', name: '艾尔娜', role: '灯塔管理员', avatar: 'E', summary: '沉默而可靠，熟悉潮汐和所有通往外港的小路。', relationship: 6, lastInteraction: '上月替她送过一次灯油', status: '正在找钥匙' },
+        { id: 'rhea', name: '瑞娅', role: '船具店老板', avatar: 'R', summary: '精打细算，但会记住每个认真工作的人。', relationship: 31, lastInteraction: '今天下午一起盘点了麻绳', status: '正在关店', schedule: ['正在关店', '核对今天的船具账目', '把潮湿的帆布挂到后院'] },
+        { id: 'jon', name: '乔恩', role: '码头搬运工', avatar: 'J', summary: '消息灵通，喜欢讲一半故事，再看别人会不会追问。', relationship: 11, lastInteraction: '三天前在酒馆打过照面', status: '在西堤等活', schedule: ['在西堤等活', '替仓棚清点木箱', '去外港看一眼潮位'] },
+        { id: 'elna', name: '艾尔娜', role: '灯塔管理员', avatar: 'E', summary: '沉默而可靠，熟悉潮汐和所有通往外港的小路。', relationship: 6, lastInteraction: '上月替她送过一次灯油', status: '正在找钥匙', schedule: ['正在找钥匙', '擦拭灯塔的铜制护栏', '记录今晚的潮位'] },
       ],
       locations: [
         { id: 'shop', name: '船具店', kind: '工作', description: '卖缆绳、帆布和旧航海工具的小店。', distance: '当前位置', available: true },

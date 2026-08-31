@@ -4,6 +4,41 @@ export type ActionOutcome = 'success' | 'partial' | 'refused' | 'failed' | 'unkn
 
 export type ActionGenerationMode = 'guided' | 'varied' | 'freeform'
 
+export type ConditionOperator = 'min' | 'max' | 'equals' | 'includes' | 'not-includes'
+
+export interface RuleCondition {
+  path: string
+  operator: ConditionOperator
+  value: string | number | boolean
+  message?: string
+}
+
+export interface ActionRule {
+  id: string
+  conditions?: RuleCondition[]
+  allowedLocations?: string[]
+  blockedMessage?: string
+  delayedEventId?: string
+}
+
+export interface ScheduledEvent {
+  id: string
+  dueTurn: number
+  title: string
+  body: string
+  tags: string[]
+  fact?: string
+  npcId?: string
+  relationshipDelta?: number
+}
+
+export interface CharacterCreationConfig {
+  enabled: boolean
+  roles: string[]
+  professions: string[]
+  traits: string[]
+}
+
 export interface ThemeTokens {
   accent: string
   accentSoft: string
@@ -36,6 +71,7 @@ export interface NpcState {
   relationship: number
   lastInteraction: string
   status: string
+  schedule?: string[]
 }
 
 export interface LocationState {
@@ -63,11 +99,20 @@ export interface SuggestedAction {
 export interface EventLog {
   id: string
   actionId?: string
+  ruleId?: string
   date: string
   title: string
   body: string
   outcome: ActionOutcome
   tags: string[]
+  stateDiff?: StateDiff[]
+}
+
+export interface StateDiff {
+  key: string
+  label: string
+  before: string | number
+  after: string | number
 }
 
 export interface WorldState {
@@ -93,6 +138,7 @@ export interface GameState {
   history: EventLog[]
   inventory: string[]
   knownFacts: string[]
+  scheduledEvents?: ScheduledEvent[]
   turn: number
 }
 
@@ -107,6 +153,9 @@ export interface ScriptPackage {
     capabilities: string[]
   }
   theme: ThemeTokens
+  characterCreation?: CharacterCreationConfig
+  rules?: Record<string, ActionRule>
+  events?: ScheduledEvent[]
   world: {
     startingLocation: string
     opening: string[]
@@ -132,6 +181,7 @@ export interface ActionResult {
   feedback: string
   timeLabel: string
   deltas: string[]
+  stateDiff?: StateDiff[]
   state: GameState
 }
 
@@ -141,4 +191,5 @@ export interface ActionSummary {
   feedback: string
   timeLabel: string
   deltas: string[]
+  stateDiff?: StateDiff[]
 }

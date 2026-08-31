@@ -1,0 +1,38 @@
+import { expect, test } from '@playwright/test'
+
+test('desktop core life loop and settings', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only flow')
+  const errors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+  await page.goto('/')
+  await expect(page).toHaveTitle('AI Life Worlds · 人生世界')
+  await expect(page.getByRole('main').getByText('晨雾镇：一段普通人生')).toBeVisible()
+  const before = await page.locator('.action-card').allTextContents()
+  await page.locator('.action-card').first().click()
+  await expect(page.locator('.action-feedback')).toBeVisible()
+  const after = await page.locator('.action-card').allTextContents()
+  expect(new Set(after).size).toBe(after.length)
+  expect(after).not.toEqual(before)
+  await page.locator('.nav-item').filter({ hasText: '角色' }).click()
+  await page.getByRole('button', { name: '编辑档案' }).click()
+  await expect(page.getByRole('heading', { name: '重新认识一下自己' })).toBeVisible()
+  await page.getByLabel('名字').fill('旅人澄')
+  await page.getByRole('button', { name: '保存档案' }).click()
+  await expect(page.getByRole('heading', { name: '旅人澄' })).toBeVisible()
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.locator('.action-mode-option').filter({ hasText: '自由行动' }).click()
+  await page.locator('.nav-item').filter({ hasText: '当前场景' }).click()
+  await expect(page.getByRole('textbox', { name: '输入你的行动' })).toBeVisible()
+  await page.locator('#script-switcher').selectOption('tideglass')
+  await expect(page.getByRole('main').getByText('灰潮港：潮汐之间')).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('mobile keeps action-first layout and bottom navigation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'mobile-only flow')
+  await page.goto('/')
+  await expect(page.locator('.bottom-nav')).toBeVisible()
+  await expect(page.locator('.action-section')).toBeVisible()
+  await expect(page.locator('.action-card').first()).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+})

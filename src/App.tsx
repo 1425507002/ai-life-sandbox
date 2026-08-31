@@ -24,16 +24,22 @@ const money = (value: number) => `${value} 枚铜币`
 const outcomeLabel: Record<ActionOutcome, string> = { success: '行动完成', partial: '部分完成', refused: '行动未执行', failed: '行动失败', unknown: '仍待确认' }
 
 function App() {
-  const { scripts, sessions, activeScriptId, activeNav, providerConfig, actionMode, hydrated, lastAction, selectScript, setNav, setActionMode, runAction, setProviderConfig, hydrate, resetSession, importRuntime, importScriptPackage, getExportPayload } = useGameStore()
+  const { scripts, sessions, activeScriptId, activeNav, providerConfig, actionMode, hydrated, lastAction, lastNotice, selectScript, setNav, setActionMode, runAction, setProviderConfig, hydrate, resetSession, updatePlayer, notify, clearNotice, importRuntime, importScriptPackage, getExportPayload } = useGameStore()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [actionInput, setActionInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [characterEditOpen, setCharacterEditOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const scriptInput = useRef<HTMLInputElement>(null)
   const script = scripts.find((item) => item.manifest.id === activeScriptId) ?? scripts[0]
   const state = sessions[activeScriptId]?.state ?? script.world.seedState
 
   useEffect(() => { void hydrate() }, [hydrate])
+  useEffect(() => {
+    if (!lastNotice) return
+    const timer = window.setTimeout(clearNotice, 5200)
+    return () => window.clearTimeout(timer)
+  }, [lastNotice, clearNotice])
 
   const handleAction = async (input = actionInput) => {
     if (!input.trim() || busy) return
@@ -54,7 +60,7 @@ function App() {
     try {
       importRuntime(JSON.parse(await file.text()))
       setNav('play')
-    } catch { /* The settings page contains a visible explanation for invalid saves. */ }
+    } catch { notify({ type: 'error', message: '存档读取失败，请确认这是有效的 AI Life Worlds 存档。' }) }
     event.target.value = ''
   }
 
@@ -114,12 +120,13 @@ function App() {
         <header className="mobile-header">
           <button className="icon-button" aria-label="打开导航" onClick={() => setMobileOpen(true)}><Menu size={20} /></button>
           <div className="mobile-title"><span>{script.manifest.title.split('：')[0]}</span><small>第 {state.world.day} 日 · {state.world.time.split(' · ')[0]}</small></div>
-          <div className="mobile-weather"><WeatherIcon weather={state.world.weather} /><span>{state.world.weather}</span></div>
+          {activeNav === 'character' ? <button className="icon-button" aria-label="编辑角色档案" onClick={() => setCharacterEditOpen(true)}><PenLine size={18} /></button> : <div className="mobile-weather"><WeatherIcon weather={state.world.weather} /><span>{state.world.weather}</span></div>}
         </header>
         <div className="desktop-topline">
           <div className="breadcrumb"><span>人生世界</span><ChevronRight size={14} /><strong>{script.manifest.title}</strong></div>
-          <div className="topline-actions"><span className="save-status"><Check size={14} /> 已保存到本地</span><button className="icon-button" aria-label="设置" onClick={() => setNav('settings')}><Settings size={18} /></button></div>
+          <div className="topline-actions"><span className="save-status"><Check size={14} /> 已保存到本地</span>{activeNav === 'character' && <button className="quiet-button compact" onClick={() => setCharacterEditOpen(true)}><PenLine size={14} /> 编辑档案</button>}<button className="icon-button" aria-label="设置" onClick={() => setNav('settings')}><Settings size={18} /></button></div>
         </div>
+        {lastNotice && <div className={`toast-notice ${lastNotice.type}`} role="status" aria-live="polite"><span>{lastNotice.message}</span><button type="button" aria-label="关闭提示" onClick={clearNotice}><X size={14} /></button></div>}
         {activeNav === 'play' && <PlayScreen state={state} script={script} actionMode={actionMode} busy={busy} lastAction={lastAction} input={actionInput} setInput={setActionInput} onSubmit={handleSubmit} onAction={(input) => void handleAction(input)} />}
         {activeNav === 'character' && <CharacterScreen state={state} script={script} onReset={() => resetSession()} />}
         {activeNav === 'people' && <PeopleScreen state={state} />}
@@ -128,6 +135,7 @@ function App() {
         {activeNav === 'settings' && <SettingsScreen script={script} actionMode={actionMode} onActionModeChange={setActionMode} providerConfig={providerConfig} onProviderChange={setProviderConfig} onExport={() => downloadSave(getExportPayload())} onImport={() => fileInput.current?.click()} onImportScript={() => scriptInput.current?.click()} onReset={() => resetSession()} />}
         <input ref={fileInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => void handleImport(event)} />
         <input ref={scriptInput} className="visually-hidden" type="file" accept="application/json,.json,.aiworld.json" onChange={(event) => void handleScriptImport(event)} />
+        {characterEditOpen && <CharacterEditor state={state} script={script} onClose={() => setCharacterEditOpen(false)} onSave={(patch) => { updatePlayer(patch); setCharacterEditOpen(false) }} />}
       </main>
 
       <nav className="bottom-nav" aria-label="移动端主导航">
@@ -170,7 +178,7 @@ function PlayScreen({ state, script, actionMode, busy, lastAction, input, setInp
         {showComposer && <form className="action-composer" aria-label="自由行动输入" onSubmit={onSubmit}><PenLine size={18} /><input aria-label="输入你的行动" value={input} onChange={(event) => setInput(event.target.value)} placeholder={busy ? '世界正在回应…' : '输入你的行动…'} disabled={busy} /><span className="composer-hint">Enter</span><button type="submit" disabled={busy || !input.trim()} aria-label="提交行动">{busy ? <RotateCcw className="spin" size={18} /> : <Send size={18} />}</button></form>}
         <div className="small-rule-note"><CircleHelp size={14} /><span>{showComposer ? '行动卡是快捷入口，也可以在输入框里尝试自己的行动。' : '选择一个行动即可继续人生；想开放尝试时，可在设置里开启自由行动。'}</span></div>
       </section>
-      <aside className="right-rail"><StatusCard state={state} /><WorldCard state={state} /><NewsCard state={state} /></aside>
+      <aside className="right-rail"><StatusCard state={state} /><WorldCard state={state} /><NewsCard state={state} /><UpcomingEvents state={state} /></aside>
     </div>
   </div>
 }
@@ -178,7 +186,7 @@ function PlayScreen({ state, script, actionMode, busy, lastAction, input, setInp
 function ActionFeedback({ action }: { action: ActionSummary }) {
   const isRefused = action.outcome === 'refused' || action.outcome === 'failed'
   const Icon = isRefused ? CircleAlert : action.outcome === 'unknown' ? CircleHelp : Check
-  return <div className={`action-feedback ${action.outcome}`} role="status" aria-live="polite"><div className="feedback-icon"><Icon size={17} /></div><div className="feedback-copy"><div className="feedback-heading"><strong>{action.title}</strong><span>{outcomeLabel[action.outcome]}</span></div><p>{action.feedback}</p><div className="feedback-deltas">{action.deltas.map((delta) => <span key={delta}>{delta}</span>)}<span>{action.timeLabel}</span></div></div><span className="feedback-label">刚刚</span></div>
+  return <div className={`action-feedback ${action.outcome}`} role="status" aria-live="polite"><div className="feedback-icon"><Icon size={17} /></div><div className="feedback-copy"><div className="feedback-heading"><strong>{action.title}</strong><span>{outcomeLabel[action.outcome]}</span></div><p>{action.feedback}</p><div className="feedback-deltas">{action.deltas.map((delta) => <span key={delta}>{delta}</span>)}<span>{action.timeLabel}</span></div>{action.stateDiff?.length ? <div className="state-diff" aria-label="状态变化">{action.stateDiff.slice(0, 4).map((diff) => <span key={diff.key}>{diff.label} {diff.before} → {diff.after}</span>)}</div> : null}</div><span className="feedback-label">刚刚</span></div>
 }
 
 function ActionCard({ action, state, busy, selected, onClick }: { action: SuggestedAction; state: GameState; busy: boolean; selected: boolean; onClick: (input: string) => void }) {
@@ -200,6 +208,12 @@ function WorldCard({ state }: { state: GameState }) { return <section className=
 
 function NewsCard({ state }: { state: GameState }) { return <section className="rail-card news-card"><div className="rail-card-header"><span className="section-kicker"><ScrollText size={15} /> 镇上正在说</span><span className="news-count">{state.world.publicNews.length}</span></div><ul>{state.world.publicNews.map((news) => <li key={news}><span className="news-bullet" />{news}</li>)}</ul></section> }
 
+function UpcomingEvents({ state }: { state: GameState }) {
+  const events = [...(state.scheduledEvents ?? [])].sort((a, b) => a.dueTurn - b.dueTurn)
+  if (!events.length) return null
+  return <section className="rail-card event-card"><div className="rail-card-header"><span className="section-kicker"><Clock3 size={15} /> 正在酝酿</span><span className="news-count">{events.length}</span></div><ul>{events.slice(0, 3).map((event) => <li key={event.id}><span className="event-turn">第 {Math.max(1, event.dueTurn - state.turn)} 轮</span><span>{event.title}</span></li>)}</ul></section>
+}
+
 function CharacterScreen({ state, script, onReset }: { state: GameState; script: ScriptPackage; onReset: () => void }) { return <div className="page"><PageHeader eyebrow="角色档案" title={state.player.name} copy={`${script.manifest.title} · 第 ${state.world.day} 日`} action={<button className="quiet-button" onClick={onReset}><RotateCcw size={15} /> 重新开始人生</button>} /><div className="character-layout"><section className="profile-hero"><div className="profile-avatar">{state.player.name.slice(0, 1)}</div><div><p className="eyebrow">当前身份</p><h2>{state.player.role}</h2><p>{state.player.profession} · {state.player.age} 岁</p></div><div className="profile-location"><Compass size={15} /><span>{state.world.location}</span></div></section><section className="info-grid"><InfoBlock label="身体状态" value={`${state.player.health}/100`} icon={<ShieldCheck size={17} />} tone="coral" /><InfoBlock label="行动精力" value={`${state.player.stamina}/100`} icon={<Zap size={17} />} tone="green" /><InfoBlock label="随身钱币" value={money(state.player.money)} icon={<WalletCards size={17} />} tone="gold" /><InfoBlock label="镇上声望" value={`${state.player.reputation} 点`} icon={<HeartHandshake size={17} />} tone="sky" /></section><section className="detail-panel"><div className="panel-title"><span>关于你</span><span className="panel-meta">第 {state.turn} 次记录</span></div><div className="trait-list">{state.player.traits.map((trait) => <span key={trait}>{trait}</span>)}</div><p className="detail-copy">你没有默认的主线，也没有必须完成的命运。今天做什么、与谁相遇、最终成为怎样的人，都将从一次次具体选择里慢慢长出来。</p></section><section className="detail-panel"><div className="panel-title"><span>随身物品</span><span className="panel-meta">{state.inventory.length} 件</span></div><div className="inventory-list">{state.inventory.map((item) => <div key={item}><span className="item-dot" /><strong>{item}</strong><span>可用</span></div>)}</div></section></div></div> }
 
 function InfoBlock({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone: string }) { return <div className={`info-block ${tone}`}><div className="info-icon">{icon}</div><span>{label}</span><strong>{value}</strong></div> }
@@ -211,6 +225,17 @@ function HistoryScreen({ state }: { state: GameState }) { return <div className=
 function MapScreen({ state }: { state: GameState }) { return <div className="page"><PageHeader eyebrow="当前世界地图" title={state.world.region} copy="地图只显示你已经知道或走过的地方。未知区域不会因为你打开地图就自动出现。" /><div className="map-layout"><section className="map-canvas"><div className="map-water water-one" /><div className="map-water water-two" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-hill map-hill-one" /><div className="map-hill map-hill-two" /><div className="map-label label-home"><Home size={14} />{state.world.location.split(' · ')[0]}</div>{state.locations.map((location, index) => { const Icon = iconForLocation(location.kind); return <button key={location.id} className={`map-pin pin-${index} ${location.name === state.world.location.split(' · ')[1] ? 'current' : ''}`} onClick={() => undefined}><span><Icon size={14} /></span><strong>{location.name}</strong></button> })}<div className="map-compass"><span>N</span><Compass size={38} /></div></section><aside className="location-list"><div className="panel-title"><span>已知地点</span><span className="panel-meta">{state.locations.length} 个</span></div>{state.locations.map((location) => { const Icon = iconForLocation(location.kind); return <div className="location-row" key={location.id}><div className="location-icon"><Icon size={16} /></div><div><strong>{location.name}</strong><span>{location.distance} · {location.kind}</span></div><ChevronRight size={16} /></div> })}</aside></div></div> }
 
 function SettingsScreen({ script, actionMode, onActionModeChange, providerConfig, onProviderChange, onExport, onImport, onImportScript, onReset }: { script: ScriptPackage; actionMode: ActionGenerationMode; onActionModeChange: (mode: ActionGenerationMode) => void; providerConfig: { endpoint: string; apiKey: string; model: string }; onProviderChange: (config: Partial<typeof providerConfig>) => void; onExport: () => void; onImport: () => void; onImportScript: () => void; onReset: () => void }) { return <div className="page"><PageHeader eyebrow="世界设置" title="让这个世界更适合你" copy="设置保存在当前设备。API Key 不会被上传到本项目的服务器。" /><div className="settings-grid"><section className="settings-panel"><div className="settings-heading"><div className="settings-icon"><Sparkles size={18} /></div><div><h2>模型连接</h2><p>可选。没有配置时使用本地确定性模拟。</p></div></div><label>OpenAI-compatible Endpoint<input value={providerConfig.endpoint} onChange={(event) => onProviderChange({ endpoint: event.target.value })} /></label><label>Model<input value={providerConfig.model} onChange={(event) => onProviderChange({ model: event.target.value })} /></label><label>API Key<input type="password" value={providerConfig.apiKey} onChange={(event) => onProviderChange({ apiKey: event.target.value })} placeholder="留空即可使用离线演示" /></label><div className="settings-note"><ShieldCheck size={15} /><span>配置仅保存在此浏览器的本地 IndexedDB 中。真实部署时建议改为服务端代理。</span></div></section><section className="settings-panel action-mode-panel"><div className="settings-heading"><div className="settings-icon warm"><ListChecks size={18} /></div><div><h2>行动呈现方式</h2><p>决定每回合看到哪些行动入口。</p></div></div><div className="action-mode-options" role="radiogroup" aria-label="行动呈现方式">{actionModeOptions.map((option) => <label className={`action-mode-option ${actionMode === option.id ? 'active' : ''}`} key={option.id}><input type="radio" name="action-mode" value={option.id} checked={actionMode === option.id} onChange={() => onActionModeChange(option.id)} /><span className="action-mode-mark">{option.id === 'guided' ? <ListChecks size={16} /> : option.id === 'varied' ? <Shuffle size={16} /> : <PenLine size={16} />}</span><span className="action-mode-copy"><strong>{option.title}</strong><small>{option.description}</small></span>{actionMode === option.id && <Check className="action-mode-check" size={16} />}</label>)}</div><div className="settings-note"><Shuffle size={15} /><span>{getActionModeMeta(actionMode).detail}</span></div></section><section className="settings-panel"><div className="settings-heading"><div className="settings-icon warm"><Database size={18} /></div><div><h2>存档管理</h2><p>把你的人生带到另一台设备。</p></div></div><div className="setting-actions"><button className="wide-button" onClick={onExport}><Download size={16} /> 导出全部世界存档</button><button className="wide-button secondary" onClick={onImport}><Upload size={16} /> 导入存档</button><button className="wide-button secondary" onClick={onImportScript}><BookOpen size={16} /> 导入剧本包</button></div><button className="danger-button" onClick={onReset}><RotateCcw size={15} /> 重置当前剧本</button></section><section className="settings-panel script-panel"><div className="settings-heading"><div className="settings-icon sky"><PanelRight size={18} /></div><div><h2>当前剧本</h2><p>剧本可以替换规则、内容和专属 UI，而不是替换整个应用。</p></div></div><div className="capability-list">{script.manifest.capabilities.map((capability) => <span key={capability}><Check size={13} /> {capability}</span>)}</div><div className="package-status"><span className="status-dot" /> 运行时包已加载 <strong>.aiworld.json</strong></div></section></div></div> }
+
+function CharacterEditor({ state, script, onClose, onSave }: { state: GameState; script: ScriptPackage; onClose: () => void; onSave: (patch: Partial<GameState['player']>) => void }) {
+  const config = script.characterCreation
+  const [draft, setDraft] = useState({ name: state.player.name, age: String(state.player.age), role: state.player.role, profession: state.player.profession, mood: state.player.mood, traits: state.player.traits })
+  const toggleTrait = (trait: string) => setDraft((current) => ({ ...current, traits: current.traits.includes(trait) ? current.traits.filter((item) => item !== trait) : [...current.traits, trait].slice(0, 4) }))
+  const submit = (event: FormEvent) => { event.preventDefault(); if (!draft.name.trim()) return; onSave({ name: draft.name.trim(), age: Math.max(1, Math.min(120, Number(draft.age) || state.player.age)), role: draft.role, profession: draft.profession, mood: draft.mood, traits: draft.traits }) }
+  const roles = config?.roles?.length ? config.roles : [state.player.role]
+  const professions = config?.professions?.length ? config.professions : [state.player.profession]
+  const traits = config?.traits?.length ? config.traits : state.player.traits
+  return <div className="modal-scrim" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}><form className="character-editor modal-panel" onSubmit={submit}><div className="modal-heading"><div><p className="eyebrow">角色编辑</p><h2>重新认识一下自己</h2><p>这些内容会保存到当前剧本，不会改写世界规则。</p></div><button type="button" className="icon-button" aria-label="关闭角色编辑" onClick={onClose}><X size={18} /></button></div><div className="editor-grid"><label>名字<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} maxLength={20} /></label><label>年龄<input type="number" min="1" max="120" value={draft.age} onChange={(event) => setDraft({ ...draft, age: event.target.value })} /></label><label>身份<select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })}>{roles.map((role) => <option key={role}>{role}</option>)}</select></label><label>职业<select value={draft.profession} onChange={(event) => setDraft({ ...draft, profession: event.target.value })}>{professions.map((profession) => <option key={profession}>{profession}</option>)}</select></label><label className="editor-wide">此刻心情<input value={draft.mood} onChange={(event) => setDraft({ ...draft, mood: event.target.value })} maxLength={30} /></label></div><fieldset className="trait-picker"><legend>初始特质</legend><div>{traits.map((trait) => <button type="button" key={trait} className={draft.traits.includes(trait) ? 'selected' : ''} onClick={() => toggleTrait(trait)}>{draft.traits.includes(trait) && <Check size={13} />}{trait}</button>)}</div></fieldset><div className="modal-actions"><button type="button" className="quiet-button" onClick={onClose}>取消</button><button type="submit" className="primary-button"><Check size={15} /> 保存档案</button></div></form></div>
+}
 
 function PageHeader({ eyebrow, title, copy, action }: { eyebrow: string; title: string; copy: string; action?: React.ReactNode }) { return <section className="page-heading inner-heading"><div><p className="eyebrow"><span className="eyebrow-line" />{eyebrow}</p><h1>{title}</h1><p className="heading-copy">{copy}</p></div>{action}</section> }
 
