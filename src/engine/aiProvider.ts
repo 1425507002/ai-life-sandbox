@@ -13,6 +13,36 @@ export interface ProviderConnectionResult {
   latencyMs?: number
 }
 
+const LOCAL_AI_PROXY_PATH = '/api/ai-proxy'
+
+function normalizedEndpoint(endpoint: string) {
+  return endpoint.trim().replace(/\/$/, '')
+}
+
+function localProxyPath(endpoint: string) {
+  try {
+    const hostname = new URL(endpoint).hostname.toLowerCase()
+    if (hostname === 'open.bigmodel.cn') return `${LOCAL_AI_PROXY_PATH}/zhipu`
+    if (hostname === 'api.deepseek.com') return `${LOCAL_AI_PROXY_PATH}/deepseek`
+  } catch {
+    return null
+  }
+  return null
+}
+
+function requestUrl(endpoint: string) {
+  return import.meta.env.DEV ? localProxyPath(endpoint) ?? normalizedEndpoint(endpoint) : normalizedEndpoint(endpoint)
+}
+
+async function postCompletion(config: ProviderConfig, payload: Record<string, unknown>, signal?: AbortSignal) {
+  return fetch(requestUrl(config.endpoint), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+    signal,
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function checkProviderConnection(config: ProviderConfig): Promise<ProviderConnectionResult> {
   if (!config.apiKey.trim()) return { ok: false, message: '请先在此页面填写 API Key。' }
   if (!config.endpoint.trim() || !config.model.trim()) return { ok: false, message: '请先填写 Endpoint 和 Model。' }
@@ -21,11 +51,7 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 15000)
   try {
-    const response = await fetch(config.endpoint.replace(/\/$/, ''), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
-      signal: controller.signal,
-      body: JSON.stringify({
+    const response = await postCompletion(config, {
         model: config.model,
         temperature: 0,
         max_tokens: 32,
@@ -33,16 +59,19 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
           { role: 'system', content: '你正在进行 API 连接测试。只回复：连接成功。' },
           { role: 'user', content: '请回复连接状态。' },
         ],
-      }),
-    })
+      }, controller.signal)
     const payload = await response.json().catch(() => null) as { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }> } | null
-    if (!response.ok) return { ok: false, message: payload?.error?.message || `服务返回 HTTP ${response.status}。` }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) return { ok: false, message: `API Key 未通过验证（HTTP ${response.status}）。` }
+      if (response.status === 404) return { ok: false, message: `服务地址或模型路径不正确（HTTP 404）。` }
+      return { ok: false, message: payload?.error?.message || `服务返回 HTTP ${response.status}。` }
+    }
     if (!payload?.choices?.[0]?.message?.content) return { ok: false, message: '服务已响应，但返回格式无法识别。' }
     return { ok: true, message: `连接成功 · ${config.model}`, latencyMs: Date.now() - startedAt }
   } catch (error) {
     const message = error instanceof DOMException && error.name === 'AbortError'
-      ? '连接超时（15 秒），请检查网络或服务地址。'
-      : '无法访问服务，可能是 API Key、模型、网络或浏览器跨域限制。'
+      ? '连接超时（15 秒）。请检查代理、网络或服务地址；若 Key 错误，通常会返回 HTTP 401/403。'
+      : '连接请求未到达模型服务，通常是本机代理、网络或服务地址问题；若 Key 错误，通常会返回 HTTP 401/403。'
     return { ok: false, message }
   } finally {
     clearTimeout(timer)
@@ -58,10 +87,7 @@ export interface NarrationRequest {
 export async function generateNarration(config: ProviderConfig, request: NarrationRequest): Promise<string[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
-    const response = await fetch(config.endpoint.replace(/\/$/, ''), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({
+    const response = await postCompletion(config, {
         model: config.model,
         temperature: 0.7,
         messages: [
@@ -69,8 +95,7 @@ export async function generateNarration(config: ProviderConfig, request: Narrati
           { role: 'user', content: JSON.stringify({ input: request.input, resolvedFacts: request.result, location: request.state.world.location, time: request.state.world.time, player: request.state.player }) },
         ],
         response_format: { type: 'json_object' },
-      }),
-    })
+      })
     if (!response.ok) return null
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
     const content = payload.choices?.[0]?.message?.content
@@ -93,10 +118,7 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
     const ruleIds = new Set(request.localCandidates.map((action) => action.ruleId ?? action.id))
-    const response = await fetch(config.endpoint.replace(/\/$/, ''), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({
+    const response = await postCompletion(config, {
         model: config.model,
         temperature: 0.85,
         messages: [
@@ -104,8 +126,7 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
           { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, state: request.state, allowedRuleIds: [...ruleIds], localCandidates: request.localCandidates }) },
         ],
         response_format: { type: 'json_object' },
-      }),
-    })
+      })
     if (!response.ok) return null
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
     const content = payload.choices?.[0]?.message?.content

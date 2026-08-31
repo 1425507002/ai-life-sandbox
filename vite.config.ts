@@ -21,4 +21,18 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/api/ai-proxy/zhipu': {
+        target: 'https://open.bigmodel.cn',
+        changeOrigin: true,
+        rewrite: () => '/api/paas/v4/chat/completions',
+      },
+      '/api/ai-proxy/deepseek': {
+        target: 'https://api.deepseek.com',
+        changeOrigin: true,
+        rewrite: () => '/chat/completions',
+      },
+    },
+  },
 })

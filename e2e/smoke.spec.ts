@@ -23,6 +23,7 @@ test('desktop core life loop and settings', async ({ page }, testInfo) => {
   await expect(page.getByLabel('模型预设')).toHaveValue('zhipu-flash')
   await page.getByRole('button', { name: '测试连接' }).click()
   await expect(page.locator('.connection-result')).toContainText('请先在此页面填写 API Key')
+  await expect(page.locator('.provider-save-status')).toContainText('已自动保存到本设备')
   await page.locator('.action-mode-option').filter({ hasText: '自由行动' }).click()
   await page.locator('.nav-item').filter({ hasText: '当前场景' }).click()
   await expect(page.getByRole('textbox', { name: '输入你的行动' })).toBeVisible()
