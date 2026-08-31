@@ -7,6 +7,13 @@ import type { ActionGenerationMode, ActionSummary, GameSession, GameState, NavKe
 import { validateScriptPackage } from './engine/scriptSchema'
 
 const DEFAULT_PROVIDER: ProviderConfig = ZHIPU_FLASH_PROVIDER
+const LEGACY_DEFAULT_PROVIDER: ProviderConfig = { endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: '', model: 'gpt-4o-mini' }
+
+function migrateProviderConfig(config?: ProviderConfig) {
+  if (!config) return DEFAULT_PROVIDER
+  const isLegacyEmptyDefault = config.endpoint === LEGACY_DEFAULT_PROVIDER.endpoint && config.model === LEGACY_DEFAULT_PROVIDER.model && !config.apiKey.trim()
+  return isLegacyEmptyDefault ? DEFAULT_PROVIDER : config
+}
 type StoreNotice = { type: 'success' | 'error' | 'info'; message: string }
 
 interface GameStore {
@@ -120,7 +127,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const scripts = mergeScripts(runtime?.scripts)
     const sessions = { ...makeSessions(scripts), ...(runtime?.sessions ?? {}) }
     const activeScriptId = runtime?.activeScriptId && scripts.some((script) => script.manifest.id === runtime.activeScriptId) ? runtime.activeScriptId : scripts[0].manifest.id
-    set({ scripts, sessions, activeScriptId, providerConfig: runtime?.providerConfig ?? DEFAULT_PROVIDER, actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', hydrated: true, lastNotice: null })
+    set({ scripts, sessions, activeScriptId, providerConfig: migrateProviderConfig(runtime?.providerConfig), actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', hydrated: true, lastNotice: null })
   },
   resetSession: (scriptId = get().activeScriptId) => set((state) => {
     const script = findScript(state.scripts, scriptId)
@@ -138,7 +145,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const scripts = mergeScripts(candidate.scripts ?? get().scripts)
     const activeScriptId = candidate.activeScriptId && scripts.some((script) => script.manifest.id === candidate.activeScriptId) ? candidate.activeScriptId : scripts[0].manifest.id
     const sessions = { ...makeSessions(scripts), ...candidate.sessions }
-    const providerConfig = candidate.providerConfig ?? DEFAULT_PROVIDER
+    const providerConfig = migrateProviderConfig(candidate.providerConfig)
     const actionMode = isActionGenerationMode(candidate.actionMode) ? candidate.actionMode : 'guided'
     set({ scripts, sessions, activeScriptId, providerConfig, actionMode, activeNav: 'play', lastNotice: { type: 'success', message: '存档已导入，当前世界已恢复。' } })
     persist({ sessions, activeScriptId, providerConfig, actionMode, scripts })
