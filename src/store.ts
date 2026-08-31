@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { buildInitialState, resolveAction } from './engine/actionEngine'
-import { generateActionCandidates, generateNarration } from './engine/aiProvider'
+import { generateActionCandidates, generateNarration, ZHIPU_FLASH_PROVIDER } from './engine/aiProvider'
 import { scriptPackages } from './data/scripts'
 import { loadRuntime, saveRuntime, validateRuntimePayload } from './storage'
 import type { ActionGenerationMode, ActionSummary, GameSession, GameState, NavKey, ProviderConfig, ScriptPackage } from './types'
 import { validateScriptPackage } from './engine/scriptSchema'
 
-const DEFAULT_PROVIDER: ProviderConfig = { endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: '', model: 'gpt-4o-mini' }
+const DEFAULT_PROVIDER: ProviderConfig = ZHIPU_FLASH_PROVIDER
 type StoreNotice = { type: 'success' | 'error' | 'info'; message: string }
 
 interface GameStore {

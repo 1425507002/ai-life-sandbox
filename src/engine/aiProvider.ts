@@ -1,6 +1,54 @@
 import type { GameState, ProviderConfig, ScriptPackage, SuggestedAction } from '../types'
 import { validateSuggestedAction } from './scriptSchema'
 
+export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
+  endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+  apiKey: '',
+  model: 'glm-4.7-flash',
+}
+
+export interface ProviderConnectionResult {
+  ok: boolean
+  message: string
+  latencyMs?: number
+}
+
+export async function checkProviderConnection(config: ProviderConfig): Promise<ProviderConnectionResult> {
+  if (!config.apiKey.trim()) return { ok: false, message: '请先在此页面填写 API Key。' }
+  if (!config.endpoint.trim() || !config.model.trim()) return { ok: false, message: '请先填写 Endpoint 和 Model。' }
+
+  const startedAt = Date.now()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const response = await fetch(config.endpoint.replace(/\/$/, ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.model,
+        temperature: 0,
+        max_tokens: 32,
+        messages: [
+          { role: 'system', content: '你正在进行 API 连接测试。只回复：连接成功。' },
+          { role: 'user', content: '请回复连接状态。' },
+        ],
+      }),
+    })
+    const payload = await response.json().catch(() => null) as { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }> } | null
+    if (!response.ok) return { ok: false, message: payload?.error?.message || `服务返回 HTTP ${response.status}。` }
+    if (!payload?.choices?.[0]?.message?.content) return { ok: false, message: '服务已响应，但返回格式无法识别。' }
+    return { ok: true, message: `连接成功 · ${config.model}`, latencyMs: Date.now() - startedAt }
+  } catch (error) {
+    const message = error instanceof DOMException && error.name === 'AbortError'
+      ? '连接超时（15 秒），请检查网络或服务地址。'
+      : '无法访问服务，可能是 API Key、模型、网络或浏览器跨域限制。'
+    return { ok: false, message }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export interface NarrationRequest {
   input: string
   result: string[]
