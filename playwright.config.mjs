@@ -15,6 +15,6 @@ export default defineConfig({
         viewport: { width: 1280, height: 900 },
       },
     },
-    { name: 'mobile', use: { ...devices['iPhone 13'], browserName: 'chromium' } },
+    { name: 'mobile', use: { ...devices['iPhone 13'], browserName: 'chromium', channel: 'chrome' } },
   ],
 })
