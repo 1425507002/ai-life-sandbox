@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.mjs",
     "test:e2e": "playwright test",
-    "browser:visible": "node scripts/open-visible-chrome.mjs"
+    "browser:visible": "node scripts/open-visible-chrome.mjs",
+    "mumu": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mumu-control.ps1"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
