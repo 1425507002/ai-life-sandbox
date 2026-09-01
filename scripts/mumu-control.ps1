@@ -1,7 +1,9 @@
 param(
-  [ValidateSet('status', 'start', 'open-url', 'screenshot', 'tap', 'back', 'home')]
+  [ValidateSet('status', 'start', 'install-apk', 'launch-app', 'open-url', 'screenshot', 'tap', 'back', 'home')]
   [string]$Action = 'status',
   [string]$Url,
+  [string]$Apk,
+  [string]$Package = 'com.skyplatanus.crucio',
   [int]$X,
   [int]$Y,
   [string]$Path = "$env:TEMP\mumu-screen.png",
@@ -41,6 +43,18 @@ switch ($Action) {
     Wait-Device
     & $manager info --vmindex 0
     & $adb devices -l
+  }
+  'install-apk' {
+    if (-not $Apk) { throw 'install-apk requires -Apk <path>' }
+    $resolvedApk = [System.IO.Path]::GetFullPath($Apk)
+    if (-not (Test-Path $resolvedApk)) { throw "APK not found: $resolvedApk" }
+    Wait-Device
+    Invoke-MuMuAdb @('-s', $Serial, 'install', '-r', $resolvedApk)
+  }
+  'launch-app' {
+    if ($Package -notmatch '^[A-Za-z0-9._]+$') { throw 'Package contains invalid characters' }
+    Wait-Device
+    Invoke-MuMuAdb @('-s', $Serial, 'shell', 'monkey', '-p', $Package, '1')
   }
   'open-url' {
     if ($Url -notmatch '^https?://') { throw 'Url must start with http:// or https://' }
