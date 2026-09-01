@@ -40,3 +40,15 @@ test('mobile keeps action-first layout and bottom navigation', async ({ page }, 
   await expect(page.locator('.action-card').first()).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
 })
+
+test('dev proxy preserves provider error details in settings', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider proxy flow')
+  await page.goto('http://127.0.0.1:4174/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 API Key').fill('invalid-test-key-only')
+  await page.getByRole('button', { name: '测试连接' }).click()
+  await expect(page.locator('.connection-result')).toContainText('服务器反馈：')
+  await expect(page.locator('.connection-result')).toContainText(/令牌已过期或验证不正确|token expired or incorrect/)
+  await expect(page.locator('.connection-result')).toContainText('HTTP 401')
+  await expect(page.locator('.connection-result')).not.toContainText('API Key 未通过验证')
+})

@@ -13,6 +13,12 @@ export interface ProviderConnectionResult {
   latencyMs?: number
 }
 
+type ProviderErrorPayload = {
+  error?: { code?: string | number; message?: string }
+  code?: string | number
+  message?: string
+}
+
 const LOCAL_AI_PROXY_PATH = '/api/ai-proxy'
 
 function normalizedEndpoint(endpoint: string) {
@@ -43,6 +49,18 @@ async function postCompletion(config: ProviderConfig, payload: Record<string, un
   })
 }
 
+function serverErrorMessage(status: number, payload: ProviderErrorPayload | null) {
+  const providerMessage = payload?.error?.message?.trim()
+    ? payload.error.message
+    : payload?.message?.trim()
+      ? payload.message
+      : undefined
+  const providerCode = payload?.error?.code ?? payload?.code
+  if (!providerMessage) return `服务器返回 HTTP ${status}，但没有提供可识别的错误详情。`
+  const codeNote = providerCode === undefined ? '' : `，业务错误码 ${providerCode}`
+  return `服务器反馈：${providerMessage}（HTTP ${status}${codeNote}）`
+}
+
 export async function checkProviderConnection(config: ProviderConfig): Promise<ProviderConnectionResult> {
   if (!config.apiKey.trim()) return { ok: false, message: '请先在此页面填写 API Key。' }
   if (!config.endpoint.trim() || !config.model.trim()) return { ok: false, message: '请先填写 Endpoint 和 Model。' }
@@ -60,12 +78,8 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
           { role: 'user', content: '请回复连接状态。' },
         ],
       }, controller.signal)
-    const payload = await response.json().catch(() => null) as { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }> } | null
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) return { ok: false, message: `API Key 未通过验证（HTTP ${response.status}）。` }
-      if (response.status === 404) return { ok: false, message: `服务地址或模型路径不正确（HTTP 404）。` }
-      return { ok: false, message: payload?.error?.message || `服务返回 HTTP ${response.status}。` }
-    }
+    const payload = await response.json().catch(() => null) as (ProviderErrorPayload & { choices?: Array<{ message?: { content?: string } }> }) | null
+    if (!response.ok) return { ok: false, message: serverErrorMessage(response.status, payload) }
     if (!payload?.choices?.[0]?.message?.content) return { ok: false, message: '服务已响应，但返回格式无法识别。' }
     return { ok: true, message: `连接成功 · ${config.model}`, latencyMs: Date.now() - startedAt }
   } catch (error) {
