@@ -78,4 +78,14 @@ describe('action engine', () => {
 
     expect(result.state.npcs.some((npc) => npc.status !== script.world.seedState.npcs.find((item) => item.id === npc.id)?.status)).toBe(true)
   })
+
+  it('advances the calendar day when an action crosses midnight', () => {
+    const state = buildInitialState(script)
+    state.world.day = 7
+    state.world.time = '夜晚 · 23:50'
+    const result = resolveAction(state, '整理房间', script)
+
+    expect(result.state.world.day).toBe(8)
+    expect(result.state.world.time).toBe('深夜 · 00:25')
+  })
 })

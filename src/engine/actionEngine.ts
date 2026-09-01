@@ -7,10 +7,11 @@ function advanceTime(state: GameState, minutes: number) {
   const [period, clock] = state.world.time.split(' · ')
   const [hours, mins] = clock.split(':').map(Number)
   const total = hours * 60 + mins + minutes
+  const dayOffset = Math.floor(total / (24 * 60))
   const nextHours = Math.floor((total % (24 * 60)) / 60)
   const nextMinutes = total % 60
   const nextPeriod = nextHours < 6 ? '深夜' : nextHours < 11 ? '清晨' : nextHours < 14 ? '午后' : nextHours < 18 ? '傍晚' : '夜晚'
-  return `${nextPeriod} · ${pad(nextHours)}:${pad(nextMinutes)}`
+  return { day: state.world.day + dayOffset, time: `${nextPeriod} · ${pad(nextHours)}:${pad(nextMinutes)}`, previousPeriod: period }
 }
 
 function cloneState(state: GameState): GameState {
@@ -112,11 +113,13 @@ function findAction(state: GameState, input: string): SuggestedAction | string |
 function genericOutcome(state: GameState, input: string, script: ScriptPackage): ActionResult {
   const next = cloneState(state)
   next.turn += 1
-  next.world.time = advanceTime(next, 25)
+  const advanced = advanceTime(next, 25)
+  next.world.day = advanced.day
+  next.world.time = advanced.time
   next.player.stamina = Math.max(0, next.player.stamina - 3)
   next.world.narrative = [`你决定先观察一下周围，再处理“${input}”这件事。`, '这不是一个能立刻得到答案的行动，但你记下了几个值得继续确认的细节。']
   next.world.currentFocus = `继续确认：${input}`
-  next.history.unshift({ id: `e-${Date.now()}`, actionId: `freeform:${input.toLowerCase()}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
+  next.history.unshift({ id: `e-${next.turn}-freeform`, actionId: `freeform:${input.toLowerCase()}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
   advanceNpcSchedules(next)
   processDueEvents(next)
   next.suggestedActions = generateSuggestedActions(next, script)
@@ -142,7 +145,9 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   next.turn += 1
   next.player.money -= match.moneyCost
   next.player.stamina = Math.max(0, next.player.stamina - match.staminaCost)
-  next.world.time = advanceTime(next, match.timeCost)
+  const advanced = advanceTime(next, match.timeCost)
+  next.world.day = advanced.day
+  next.world.time = advanced.time
   const deltas = [`时间 +${match.timeCost} 分钟`, `精力 -${match.staminaCost}`]
   let outcome: ActionResult['outcome'] = 'success'
   let title = match.title
@@ -211,7 +216,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   scheduleRuleEvent(next, script, actionRule)
   advanceNpcSchedules(next)
   processDueEvents(next)
-  next.history.unshift({ id: `e-${Date.now()}`, actionId: match.id, ruleId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
+  next.history.unshift({ id: `e-${next.turn}-${match.id}`, actionId: match.id, ruleId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
   next.suggestedActions = generateSuggestedActions(next, script)
   return { outcome, title, narrative: next.world.narrative, feedback: outcome === 'partial' ? '行动完成了一部分，也留下了新的代价或线索。' : '行动已经结算，世界留下了新的变化。', timeLabel: `约 ${match.timeCost} 分钟`, deltas, stateDiff: stateDiff(state, next), state: next }
 }

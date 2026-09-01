@@ -5,6 +5,15 @@ interface ActionCopy {
   description: string
 }
 
+const FALLBACK_VARIANTS: ActionCopy[] = [
+  { title: '先观察周围', description: '先不急着做决定，观察眼下环境里有没有值得注意的细节。' },
+  { title: '先做一点准备', description: '先把这件事需要的准备做妥，再决定要不要继续深入。' },
+  { title: '换条路径试试', description: '不重复刚才的做法，换一种更稳妥的方式接近这件事。' },
+  { title: '从小处开始', description: '先完成一个较小的步骤，让这件事慢慢显出方向。' },
+  { title: '留意一个细节', description: '把注意力放在容易被忽略的细节上，也许会得到新的线索。' },
+  { title: '找人问问', description: '先和熟悉这里的人聊几句，再决定下一步怎么做。' },
+]
+
 const LOCAL_VARIANTS: Record<string, ActionCopy[]> = {
   market: [
     { title: '去集市问问旧桥', description: '找熟悉的摊贩聊聊旧桥修缮，看看运输会不会受影响。' },
@@ -49,27 +58,33 @@ const LOCAL_VARIANTS: Record<string, ActionCopy[]> = {
 }
 
 function copyFor(action: SuggestedAction, variantIndex: number): ActionCopy {
-  const variants = LOCAL_VARIANTS[action.ruleId ?? action.id] ?? [
-    { title: `${action.title} · 换个角度`, description: `换一种方式处理：${action.description}` },
-    { title: `${action.title} · 先做准备`, description: `先完成准备，再尝试：${action.description}` },
-    { title: `${action.title} · 试探一步`, description: `谨慎试探当前情况：${action.description}` },
-  ]
+  const variants = LOCAL_VARIANTS[action.ruleId ?? action.id] ?? FALLBACK_VARIANTS.map((variant) => ({
+    title: `${action.title} · ${variant.title}`,
+    description: `${variant.description} 原本的方向是：${action.description}`,
+  }))
   return variants[variantIndex % variants.length]
 }
 
 export function generateSuggestedActions(state: GameState, script: ScriptPackage): SuggestedAction[] {
-  const source = script.world.seedState.suggestedActions
+  const source = [...new Map(script.world.seedState.suggestedActions.map((action) => [action.ruleId ?? action.id, action])).values()]
   if (!source.length) return []
   const latestAction = state.history.find((event) => event.ruleId || (event.actionId && !event.actionId.startsWith('freeform:')))
   const latestRuleId = latestAction?.ruleId ?? latestAction?.actionId
-  const latestTitle = latestAction?.title
+  const recentTitles = new Set(state.history.slice(0, 12).map((event) => event.title.trim()).filter(Boolean))
+  const generatedTitles = new Set<string>()
   const generated = source.map((action, index) => {
     const ruleId = action.ruleId ?? action.id
-    const variantIndex = Math.max(0, state.turn - 1 + index) % 3
-    const copy = copyFor({ ...action, ruleId }, variantIndex)
+    let variantIndex = Math.max(0, state.turn - 1 + index)
+    let copy = copyFor({ ...action, ruleId }, variantIndex)
+    while ((recentTitles.has(copy.title) || generatedTitles.has(copy.title)) && variantIndex < state.turn + 24) {
+      variantIndex += 1
+      copy = copyFor({ ...action, ruleId }, variantIndex)
+    }
+    generatedTitles.add(copy.title)
     return { ...action, id: `${script.manifest.id}:${ruleId}:${variantIndex}`, ruleId, title: copy.title, description: copy.description }
-  }).filter((action, index, all) => all.findIndex((candidate) => candidate.id === action.id || candidate.title === action.title) === index)
-  const fresh = generated.filter((action) => action.ruleId !== latestRuleId && action.title !== latestTitle)
+  })
+  const fresh = generated.filter((action) => action.ruleId !== latestRuleId && !recentTitles.has(action.title))
   if (fresh.length >= Math.min(3, generated.length)) return fresh
-  return generated.filter((action) => action.title !== latestTitle)
+  const fallback = generated.filter((action) => action.ruleId !== latestRuleId)
+  return fallback.length ? fallback : generated
 }

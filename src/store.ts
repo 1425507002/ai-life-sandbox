@@ -133,7 +133,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const script = findScript(state.scripts, scriptId)
     const sessions = { ...state.sessions, [scriptId]: { scriptId, state: buildInitialState(script) } }
     persist({ ...state, sessions })
-    return { sessions, lastAction: null, lastNotice: { type: 'info', message: '当前剧本已经重新开始。' } }
+    return { sessions, activeScriptId: scriptId, activeNav: 'play', lastAction: null, lastNotice: { type: 'info', message: '当前人生已经重新开始。' } }
   }),
   importRuntime: (runtime) => {
     if (!runtime || typeof runtime !== 'object') return
