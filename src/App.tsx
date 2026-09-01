@@ -25,6 +25,7 @@ const money = (value: number) => `${value} 枚铜币`
 const outcomeLabel: Record<ActionOutcome, string> = { success: '行动完成', partial: '部分完成', refused: '行动未执行', failed: '行动失败', unknown: '仍待确认' }
 const providerPresets: Array<{ id: string; label: string; endpoint: string; model: string; note: string }> = [
   { id: 'zhipu-flash', label: '智谱 · GLM-4.7-Flash（推荐）', endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', model: 'glm-4.7-flash', note: '免费模型，适合首次接入和中文角色叙事测试。' },
+  { id: 'qwen-flash', label: '通义千问 · Qwen-Flash', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-flash', note: '低成本模型，适合日常叙事与行动候选测试。' },
   { id: 'deepseek-flash', label: 'DeepSeek · V4-Flash', endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-v4-flash', note: '低成本模型，适合后续质量与成本对照。' },
   { id: 'custom', label: '自定义 OpenAI-compatible 服务', endpoint: '', model: '', note: '填写任意兼容 Chat Completions 的服务地址。' },
 ]

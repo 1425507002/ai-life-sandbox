@@ -7,6 +7,12 @@ export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   model: 'glm-4.7-flash',
 }
 
+export const QWEN_FLASH_PROVIDER: ProviderConfig = {
+  endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+  apiKey: '',
+  model: 'qwen-flash',
+}
+
 export interface ProviderConnectionResult {
   ok: boolean
   message: string
@@ -30,6 +36,7 @@ function localProxyPath(endpoint: string) {
     const hostname = new URL(endpoint).hostname.toLowerCase()
     if (hostname === 'open.bigmodel.cn') return `${LOCAL_AI_PROXY_PATH}/zhipu`
     if (hostname === 'api.deepseek.com') return `${LOCAL_AI_PROXY_PATH}/deepseek`
+    if (hostname === 'dashscope.aliyuncs.com') return `${LOCAL_AI_PROXY_PATH}/qwen`
   } catch {
     return null
   }

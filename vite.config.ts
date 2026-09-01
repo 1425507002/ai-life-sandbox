@@ -33,6 +33,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: () => '/chat/completions',
       },
+      '/api/ai-proxy/qwen': {
+        target: 'https://dashscope.aliyuncs.com',
+        changeOrigin: true,
+        rewrite: () => '/compatible-mode/v1/chat/completions',
+      },
     },
   },
 })
