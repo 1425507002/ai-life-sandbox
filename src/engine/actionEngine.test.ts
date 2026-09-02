@@ -41,6 +41,15 @@ describe('action engine', () => {
     expect(harborState.suggestedActions.some((action) => (action.ruleId ?? action.id) === 'market')).toBe(false)
   })
 
+  it('refuses a map-specific free-form keyword instead of silently advancing time', () => {
+    const harborState = buildInitialState(harborScript, 'tide-harbor')
+    const result = resolveAction(harborState, '我想去北坡雾林采药', harborScript)
+
+    expect(result.outcome).toBe('refused')
+    expect(result.state.turn).toBe(harborState.turn)
+    expect(result.deltas).toContain('地图条件不满足')
+  })
+
   it('refuses actions that exceed the player resources without mutating state', () => {
     const state = buildInitialState(script)
     state.player.stamina = 2

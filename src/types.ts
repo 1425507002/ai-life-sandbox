@@ -147,7 +147,16 @@ export interface GameState {
   inventory: string[]
   knownFacts: string[]
   scheduledEvents?: ScheduledEvent[]
+  memory?: MemoryState
   turn: number
+}
+
+export interface MemoryState {
+  summary: string
+  compressedThroughTurn: number
+  compressedEventIds?: string[]
+  pinnedFacts: string[]
+  openThreads: string[]
 }
 
 export interface ScriptPackage {

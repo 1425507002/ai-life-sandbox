@@ -1,5 +1,6 @@
 import type { GameState, ProviderConfig, ScriptPackage, SuggestedAction } from '../types'
 import { validateSuggestedAction } from './scriptSchema'
+import { buildMemoryPacket } from './memory'
 
 export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -113,7 +114,7 @@ export async function generateNarration(config: ProviderConfig, request: Narrati
         temperature: 0.7,
         messages: [
           { role: 'system', content: '你是一个克制、连续、尊重游戏状态的中文人生模拟器叙事者。只润色已有事实，不新增资源、人物或结果。输出两段短叙事，每段不超过80字，用JSON数组返回。' },
-          { role: 'user', content: JSON.stringify({ input: request.input, resolvedFacts: request.result, location: request.state.world.location, time: request.state.world.time, player: request.state.player }) },
+          { role: 'user', content: JSON.stringify({ input: request.input, resolvedFacts: request.result, context: buildMemoryPacket(request.state) }) },
         ],
         response_format: { type: 'json_object' },
       })
@@ -138,13 +139,14 @@ export interface ActionCandidatesRequest {
 export async function generateActionCandidates(config: ProviderConfig, request: ActionCandidatesRequest): Promise<SuggestedAction[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
-    const ruleIds = new Set(request.localCandidates.map((action) => action.ruleId ?? action.id))
+    const localCandidates = request.localCandidates.slice(0, 6)
+    const ruleIds = new Set(localCandidates.map((action) => action.ruleId ?? action.id))
     const response = await postCompletion(config, {
         model: config.model,
         temperature: 0.85,
         messages: [
           { role: 'system', content: '你是 AI 人生模拟器的行动候选助手。只能基于给定 ruleId 生成候选文案，不得创造新规则、资源、人物、地点或成本逻辑。只返回 JSON 对象：{"actions":[...]}。每次最多 6 个行动。' },
-          { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, state: request.state, allowedRuleIds: [...ruleIds], localCandidates: request.localCandidates }) },
+          { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, context: buildMemoryPacket(request.state), allowedRuleIds: [...ruleIds].slice(0, 12), localCandidates }) },
         ],
         response_format: { type: 'json_object' },
       })

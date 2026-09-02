@@ -54,10 +54,18 @@ test('mobile keeps action-first layout and bottom navigation', async ({ page }, 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
 })
 
-test('dev proxy preserves provider error details in settings', async ({ page }, testInfo) => {
+test('provider error details remain visible in settings', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider proxy flow')
-  await page.goto('http://127.0.0.1:4174/')
+  await page.route('**/api/ai-proxy/zhipu', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 1214, message: '令牌已过期或验证不正确' } }),
+    })
+  })
+  await page.goto('/')
   await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 Endpoint').fill('http://127.0.0.1:4175/api/ai-proxy/zhipu')
   await page.getByLabel('模型 API Key').fill('invalid-test-key-only')
   await page.getByRole('button', { name: '测试连接' }).click()
   await expect(page.locator('.connection-result')).toContainText('服务器反馈：')

@@ -1,5 +1,6 @@
 import type { ActionResult, GameState, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
 import { generateSuggestedActions } from './suggestionEngine'
+import { compressMemory } from './memory'
 
 const pad = (value: number) => value.toString().padStart(2, '0')
 
@@ -123,6 +124,7 @@ function genericOutcome(state: GameState, input: string, script: ScriptPackage):
   advanceNpcSchedules(next)
   processDueEvents(next)
   next.suggestedActions = generateSuggestedActions(next, script)
+  next.memory = compressMemory(next)
   return { outcome: 'unknown', title: '事情还没有定论', narrative: next.world.narrative, feedback: '这个行动可以开始，但现在更像是一个需要继续观察的方向。', timeLabel: '约 25 分钟', deltas: ['精力 -3', '新增一个待确认事项'], stateDiff: stateDiff(state, next), state: next }
 }
 
@@ -131,7 +133,15 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   if (!cleanInput) return { outcome: 'refused', title: '还没有行动', narrative: ['先写下你想做的事，世界才知道该如何回应。'], feedback: '请输入一个具体行动。', timeLabel: '未推进时间', deltas: [], state }
 
   const match = findAction(state, cleanInput)
-  if (typeof match !== 'object' || !match) return genericOutcome(state, cleanInput, script)
+  if (typeof match !== 'object' || !match) {
+    if (typeof match === 'string') {
+      const rule = script.rules?.[match]
+      if (rule?.allowedMapIds?.length && state.world.mapId && !rule.allowedMapIds.includes(state.world.mapId)) {
+        return { outcome: 'refused', title: '这项生活不属于当前地区', narrative: ['你知道这件事，但它属于另一个地区的生活方式。'], feedback: rule.blockedMessage ?? '先选择合适的地图，或换一个符合当前地区的行动。', timeLabel: '未推进时间', deltas: ['地图条件不满足'], state }
+      }
+    }
+    return genericOutcome(state, cleanInput, script)
+  }
 
   const next = cloneState(state)
   const actionRule = match.ruleId ?? match.id
@@ -219,6 +229,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   processDueEvents(next)
   next.history.unshift({ id: `e-${next.turn}-${match.id}`, turn: next.turn, actionId: match.id, ruleId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
   next.suggestedActions = generateSuggestedActions(next, script)
+  next.memory = compressMemory(next)
   return { outcome, title, narrative: next.world.narrative, feedback: outcome === 'partial' ? '行动完成了一部分，也留下了新的代价或线索。' : '行动已经结算，世界留下了新的变化。', timeLabel: `约 ${match.timeCost} 分钟`, deltas, stateDiff: stateDiff(state, next), state: next }
 }
 
@@ -235,5 +246,6 @@ export function buildInitialState(script: ScriptPackage, mapId?: string): GameSt
     next.world.narrative = [...script.world.opening]
   }
   next.suggestedActions = generateSuggestedActions(next, script)
+  next.memory = compressMemory(next)
   return next
 }

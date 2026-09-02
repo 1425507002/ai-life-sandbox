@@ -36,6 +36,10 @@ describe('game store', () => {
     expect(session.state.world.mapId).toBe('tide-harbor')
     expect(session.state.world.region).toBe(harbor?.region)
     expect(harbor?.availableProfessions).toContain(session.state.player.profession)
+
+    useGameStore.getState().updatePlayer({ profession: '木匠学徒' })
+    const edited = useGameStore.getState().sessions[useGameStore.getState().activeLifeId]
+    expect(harbor?.availableProfessions).toContain(edited.state.player.profession)
   })
 
   it('switches UI themes without changing the active life', () => {
@@ -59,5 +63,44 @@ describe('game store', () => {
     const current = useGameStore.getState()
     expect(current.sessions['western-world::default'].state.turn).toBe(before)
     expect(current.activeLifeId).toBe('western-world::default')
+  })
+
+  it('migrates legacy map saves to the matching life and caps imported snapshots', () => {
+    vi.stubGlobal('window', {})
+    const legacyState = structuredClone(getScript('dawnmere').world.seedState)
+    const snapshots = Array.from({ length: 40 }, (_, index) => ({ turn: index + 1, state: legacyState }))
+    useGameStore.getState().importRuntime({
+      format: 'ai-life-world-save',
+      version: 2,
+      activeScriptId: 'dawnmere',
+      sessions: { dawnmere: { scriptId: 'dawnmere', state: legacyState, snapshots } },
+      providerConfig: { endpoint: '', apiKey: '', model: '' },
+    })
+
+    const current = useGameStore.getState()
+    expect(current.activeScriptId).toBe('western-world')
+    expect(current.sessions[current.activeLifeId].state.world.mapId).toBe('mist-town')
+    expect(current.activeLifeId).not.toBe('western-world::default')
+    expect(current.sessions[current.activeLifeId].snapshots).toHaveLength(25)
+    expect(current.sessions[current.activeLifeId].snapshots?.every((snapshot) => snapshot.state.world.mapId === 'mist-town')).toBe(true)
+  })
+
+  it('does not write an AI result into a life changed while the request was pending', async () => {
+    vi.stubGlobal('window', {})
+    let release: (response: Response) => void = () => undefined
+    const pending = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn(() => pending))
+    useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'test' } })
+    const originalTurn = useGameStore.getState().sessions['western-world::default'].state.turn
+    const running = useGameStore.getState().runAction('整理工具和窗边')
+    useGameStore.getState().startNewLife({ player: { name: '等待中的新人生' } })
+    const changedLifeId = useGameStore.getState().activeLifeId
+    release(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['不会写回旧人生'] }) } }] }), { status: 200 }))
+    await running
+
+    const current = useGameStore.getState()
+    expect(current.activeLifeId).toBe(changedLifeId)
+    expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
+    expect(current.lastAction).toBeNull()
   })
 })

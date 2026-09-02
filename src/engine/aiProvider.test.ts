@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkProviderConnection } from './aiProvider'
+import { checkProviderConnection, generateNarration } from './aiProvider'
+import { buildInitialState } from './actionEngine'
+import { getScript } from '../data/scripts'
 
 const provider = { endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', apiKey: 'test-key-only', model: 'glm-4.7-flash' }
 
@@ -48,5 +50,21 @@ describe('checkProviderConnection', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('upstream failure', { status: 502 })))
     const nonJson = await checkProviderConnection(provider)
     expect(nonJson.message).toBe('服务器返回 HTTP 502，但没有提供可识别的错误详情。')
+  })
+
+  it('sends a bounded memory packet instead of the full game state', async () => {
+    const state = buildInitialState(getScript('western-world'))
+    state.history = Array.from({ length: 30 }, (_, index) => ({ id: `old-${index}`, turn: 30 - index, date: '第 1 日 · 午后', title: `旧事 ${index}`, body: '旧事内容', outcome: 'success' as const, tags: ['测试'] }))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['第一段', '第二段'] }) } }] }), { status: 200 })))
+
+    const result = await generateNarration(provider, { input: '整理房间', result: ['已整理房间'], state })
+    const request = vi.mocked(fetch).mock.calls[0]?.[1]
+    const body = JSON.parse(String(request?.body)) as { messages: Array<{ content: string }> }
+    const context = JSON.parse(body.messages[1].content) as { context: { recentHistory: unknown[]; memory: { summary: string } }; state?: unknown }
+
+    expect(result).toEqual(['第一段', '第二段'])
+    expect(context.context.recentHistory).toHaveLength(8)
+    expect(context.context.memory.summary).toContain('旧事 8')
+    expect(context.state).toBeUndefined()
   })
 })

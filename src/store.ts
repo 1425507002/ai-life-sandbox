@@ -65,6 +65,15 @@ function legacyMapId(scriptId: string) {
   return scriptId === 'tideglass' ? 'tide-harbor' : scriptId === 'dawnmere' ? 'mist-town' : undefined
 }
 
+function resolveActiveLifeId(sessions: Record<string, GameSession>, activeScriptId: string, requestedLifeId?: string, requestedScriptId?: string) {
+  if (requestedLifeId && sessions[requestedLifeId]?.scriptId === activeScriptId) return requestedLifeId
+  const migratedLife = requestedLifeId ? Object.values(sessions).find((session) => session.scriptId === activeScriptId && session.lifeId?.endsWith(requestedLifeId)) : undefined
+  if (migratedLife?.lifeId) return migratedLife.lifeId
+  const legacyMap = legacyMapId(requestedScriptId ?? '')
+  const mapLife = legacyMap && (Object.values(sessions).find((session) => session.scriptId === activeScriptId && session.lifeId !== defaultLifeId(activeScriptId) && session.state.world.mapId === legacyMap) ?? Object.values(sessions).find((session) => session.scriptId === activeScriptId && session.state.world.mapId === legacyMap))
+  return mapLife?.lifeId ?? Object.values(sessions).find((session) => session.scriptId === activeScriptId)?.lifeId ?? defaultLifeId(activeScriptId)
+}
+
 function normalizeSessions(raw: unknown, scripts: ScriptPackage[]): Record<string, GameSession> {
   const sessions = makeSessions(scripts)
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return sessions
@@ -79,7 +88,13 @@ function normalizeSessions(raw: unknown, scripts: ScriptPackage[]): Record<strin
     const lifeId = sourceLifeId.startsWith(`${scriptId}::`) ? sourceLifeId : `${scriptId}::${sourceLifeId}`
     const mapId = candidate.state.world?.mapId ?? legacyMapId(sourceScriptId) ?? script.world.startingMapId
     const state = { ...candidate.state, world: { ...candidate.state.world, mapId } }
-    sessions[lifeId] = { lifeId, scriptId, label: candidate.label ?? '迁移的人生', state, snapshots: candidate.snapshots?.length ? candidate.snapshots : [{ turn: state.turn, state }] }
+    const snapshots = candidate.snapshots?.length
+      ? candidate.snapshots.slice(-25).map((snapshot) => ({
+        turn: snapshot.turn,
+        state: { ...snapshot.state, world: { ...snapshot.state.world, mapId: snapshot.state.world?.mapId ?? mapId } },
+      }))
+      : [{ turn: state.turn, state }]
+    sessions[lifeId] = { lifeId, scriptId, label: candidate.label ?? '迁移的人生', state, snapshots }
   })
   return sessions
 }
@@ -164,7 +179,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ...(maybeCandidates ? { suggestedActions: maybeCandidates } : {}),
     }
     const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }]), { turn: finalState.turn, state: finalState }].slice(-25)
-    const nextSessions = { ...sessions, [activeLifeId]: { ...session, state: finalState, snapshots } }
+    const latest = get()
+    const latestSession = latest.sessions[activeLifeId]
+    if (latest.activeScriptId !== activeScriptId || latest.activeLifeId !== activeLifeId || !latestSession || latestSession.state.turn !== session.state.turn) return
+    const nextSessions = { ...latest.sessions, [activeLifeId]: { ...latestSession, state: finalState, snapshots } }
     const aiConfigured = Boolean(providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim())
     const lastNotice = aiConfigured && !maybeNarrative && !maybeCandidates
       ? { type: 'error' as const, message: '规则已完成，但 AI 服务未响应；已使用本地行动和叙事。' }
@@ -180,7 +198,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   updatePlayer: (patch) => set((state) => {
     const session = state.sessions[state.activeLifeId]
     if (!session) return state
-    const nextState = { ...session.state, player: { ...session.state.player, ...patch } }
+    const script = findScript(state.scripts, session.scriptId)
+    const selectedMap = script.maps?.find((map) => map.id === session.state.world.mapId)
+    const draftPlayer = { ...session.state.player, ...patch }
+    const nextPlayer = {
+      ...draftPlayer,
+      ...(selectedMap?.availableRoles?.length && !selectedMap.availableRoles.includes(draftPlayer.role) ? { role: selectedMap.availableRoles[0] } : {}),
+      ...(selectedMap?.availableProfessions?.length && !selectedMap.availableProfessions.includes(draftPlayer.profession) ? { profession: selectedMap.availableProfessions[0] } : {}),
+    }
+    const nextState = { ...session.state, player: nextPlayer }
     const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }])]
     if (snapshots.length && snapshots[snapshots.length - 1].turn === nextState.turn) snapshots[snapshots.length - 1] = { turn: nextState.turn, state: nextState }
     const sessions = { ...state.sessions, [state.activeLifeId]: { ...session, state: nextState, snapshots } }
@@ -195,7 +221,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const sessions = normalizeSessions(runtime?.sessions, scripts)
     const requestedScriptId = runtime?.activeScriptId === 'dawnmere' || runtime?.activeScriptId === 'tideglass' ? 'western-world' : runtime?.activeScriptId
     const activeScriptId = requestedScriptId && scripts.some((script) => script.manifest.id === requestedScriptId) ? requestedScriptId : scripts[0].manifest.id
-    const activeLifeId = runtime?.activeLifeId && sessions[runtime.activeLifeId]?.scriptId === activeScriptId ? runtime.activeLifeId : Object.values(sessions).find((session) => session.scriptId === activeScriptId)?.lifeId ?? defaultLifeId(activeScriptId)
+    const activeLifeId = resolveActiveLifeId(sessions, activeScriptId, runtime?.activeLifeId, runtime?.activeScriptId)
     set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig: migrateProviderConfig(runtime?.providerConfig), actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', uiThemeId: isUiThemeId(runtime?.uiThemeId) ? runtime.uiThemeId : 'paper-journal', hydrated: true, lastNotice: null })
   },
   resetSession: (scriptId = get().activeScriptId) => set((state) => {
@@ -220,7 +246,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ...(selectedMap?.availableRoles?.length && !allowedRole ? { role: selectedMap.availableRoles[0] } : {}),
       ...(selectedMap?.availableProfessions?.length && !allowedProfession ? { profession: selectedMap.availableProfessions[0] } : {}),
     }
-    const lifeId = `${scriptId}::life-${Date.now()}`
+    const baseLifeId = `${scriptId}::life-${Date.now()}`
+    let lifeId = baseLifeId
+    let suffix = 2
+    while (state.sessions[lifeId]) lifeId = `${baseLifeId}-${suffix++}`
     const newState = { ...base, player }
     const sessions = { ...state.sessions, [lifeId]: { lifeId, scriptId, label: player.name || '未命名人生', state: newState, snapshots: [{ turn: newState.turn, state: newState }] } }
     persist({ ...state, sessions, activeScriptId: scriptId, activeLifeId: lifeId })
@@ -248,7 +277,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const requestedScriptId = candidate.activeScriptId === 'dawnmere' || candidate.activeScriptId === 'tideglass' ? 'western-world' : candidate.activeScriptId
     const activeScriptId = requestedScriptId && scripts.some((script) => script.manifest.id === requestedScriptId) ? requestedScriptId : scripts[0].manifest.id
     const sessions = normalizeSessions(candidate.sessions, scripts)
-    const activeLifeId = candidate.activeLifeId && sessions[candidate.activeLifeId]?.scriptId === activeScriptId ? candidate.activeLifeId : Object.values(sessions).find((session) => session.scriptId === activeScriptId)?.lifeId ?? defaultLifeId(activeScriptId)
+    const activeLifeId = resolveActiveLifeId(sessions, activeScriptId, candidate.activeLifeId, candidate.activeScriptId)
     const providerConfig = migrateProviderConfig(candidate.providerConfig)
     const actionMode = isActionGenerationMode(candidate.actionMode) ? candidate.actionMode : 'guided'
     const uiThemeId = isUiThemeId(candidate.uiThemeId) ? candidate.uiThemeId : get().uiThemeId
