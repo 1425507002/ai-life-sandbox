@@ -139,8 +139,64 @@ const tideglass: ScriptPackage = {
   },
 }
 
-export const scriptPackages: ScriptPackage[] = [dawnmere, tideglass]
+const westernWorld: ScriptPackage = {
+  manifest: {
+    id: 'western-world',
+    title: '西方世界的人生',
+    subtitle: '原创西幻 · 开放人生沙盘',
+    version: '0.2',
+    author: 'AI Life Worlds',
+    description: '一个没有固定主线的西方世界。你可以从不同地区开始生活，也可以让同一个世界见证多条人生。',
+    capabilities: ['地图', '职业', '关系', '经济', '长期因果'],
+  },
+  theme: dawnmere.theme,
+  characterCreation: {
+    enabled: true,
+    roles: [...new Set([...(dawnmere.characterCreation?.roles ?? []), ...(tideglass.characterCreation?.roles ?? [])])],
+    professions: [...new Set([...(dawnmere.characterCreation?.professions ?? []), ...(tideglass.characterCreation?.professions ?? [])])],
+    traits: [...new Set([...(dawnmere.characterCreation?.traits ?? []), ...(tideglass.characterCreation?.traits ?? [])])],
+    ageStages: [
+      { id: 'baby', label: '婴儿期', minAge: 0, maxAge: 3, description: '从出生开始，行动范围和成长节奏会受到照料与家庭影响。' },
+      { id: 'child', label: '童年期', minAge: 4, maxAge: 11, description: '可以探索住处、学习基础技能并建立最初的人际关系。' },
+      { id: 'teen', label: '少年期', minAge: 12, maxAge: 17, description: '可以学习、拜师或开始尝试承担有限的工作。' },
+      { id: 'adult', label: '成年期', minAge: 18, maxAge: 59, description: '拥有完整的职业、迁居、交易和关系选择。' },
+      { id: 'elder', label: '老年期', minAge: 60, maxAge: 120, description: '经验更丰富，但体力、健康和时间安排需要更谨慎。' },
+    ],
+  },
+  maps: [
+    {
+      id: 'mist-town', title: '晨雾镇', subtitle: '北境边缘 · 边境小镇', description: dawnmere.manifest.description,
+      region: '北境边缘', kind: '城镇', startingLocation: dawnmere.world.startingLocation, opening: dawnmere.world.opening,
+      availableRoles: dawnmere.characterCreation?.roles, availableProfessions: dawnmere.characterCreation?.professions, seedState: dawnmere.world.seedState,
+    },
+    {
+      id: 'tide-harbor', title: '灰潮港', subtitle: '西海岸 · 潮汐港口', description: tideglass.manifest.description,
+      region: '西海岸', kind: '港口', startingLocation: tideglass.world.startingLocation, opening: tideglass.world.opening,
+      availableRoles: tideglass.characterCreation?.roles, availableProfessions: tideglass.characterCreation?.professions, seedState: tideglass.world.seedState,
+    },
+  ],
+  rules: {
+    forest: { ...dawnmere.rules?.forest, id: 'forest', allowedMapIds: ['mist-town'] },
+    market: { ...dawnmere.rules?.market, id: 'market', allowedMapIds: ['mist-town'] },
+    smith: { ...dawnmere.rules?.smith, id: 'smith', allowedMapIds: ['mist-town'] },
+    tavern: { ...tideglass.rules?.tavern, id: 'tavern', allowedMapIds: ['tide-harbor'] },
+    lighthouse: { ...tideglass.rules?.lighthouse, id: 'lighthouse', allowedMapIds: ['tide-harbor'] },
+    dock: { ...tideglass.rules?.dock, id: 'dock', allowedMapIds: ['tide-harbor'] },
+  },
+  events: [...(dawnmere.events ?? []), ...(tideglass.events ?? [])],
+  world: {
+    startingMapId: 'mist-town', startingLocation: dawnmere.world.startingLocation, opening: dawnmere.world.opening,
+    seedState: { ...dawnmere.world.seedState, world: { ...dawnmere.world.seedState.world, mapId: 'mist-town' } },
+  },
+}
+
+export const scriptPackages: ScriptPackage[] = [westernWorld]
 
 export function getScript(scriptId: string) {
+  if (scriptId === 'dawnmere' || scriptId === 'tideglass') return westernWorld
   return scriptPackages.find((script) => script.manifest.id === scriptId) ?? scriptPackages[0]
+}
+
+export function getMap(script: ScriptPackage, mapId: string) {
+  return script.maps?.find((map) => map.id === mapId)
 }

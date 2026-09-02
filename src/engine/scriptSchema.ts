@@ -36,6 +36,20 @@ function validateState(input: unknown, errors: string[]) {
   if (Array.isArray(input.suggestedActions)) input.suggestedActions.forEach((action, index) => validateAction(action, `world.seedState.suggestedActions[${index}]`, errors))
 }
 
+function validateMap(input: unknown, index: number, errors: string[]) {
+  const path = `maps[${index}]`
+  if (!isRecord(input) || !hasKeys(input, ['id', 'title', 'subtitle', 'description', 'region', 'kind', 'startingLocation', 'opening', 'seedState'])) {
+    errors.push(`${path} 缺少地图必填字段`)
+    return
+  }
+  if (![input.id, input.title, input.subtitle, input.description, input.region, input.kind, input.startingLocation].every(isString)) errors.push(`${path} 的文本字段格式错误`)
+  if (!Array.isArray(input.opening) || !input.opening.every(isString)) errors.push(`${path}.opening 必须是字符串数组`)
+  if (input.availableRoles !== undefined && (!Array.isArray(input.availableRoles) || !input.availableRoles.every(isString))) errors.push(`${path}.availableRoles 必须是字符串数组`)
+  if (input.availableProfessions !== undefined && (!Array.isArray(input.availableProfessions) || !input.availableProfessions.every(isString))) errors.push(`${path}.availableProfessions 必须是字符串数组`)
+  if (!isRecord(input.seedState)) errors.push(`${path}.seedState 必须是对象`)
+  else validateState(input.seedState, errors)
+}
+
 export function validateSuggestedAction(input: unknown): input is SuggestedAction {
   const errors: string[] = []
   validateAction(input, 'action', errors)
@@ -59,7 +73,15 @@ export function validateScriptPackage(input: unknown): { valid: boolean; errors:
     if (!isRecord(creation) || typeof creation.enabled !== 'boolean' || !Array.isArray(creation.roles) || !Array.isArray(creation.professions) || !Array.isArray(creation.traits)) errors.push('characterCreation 字段格式错误')
   }
   if (input.rules !== undefined && (!isRecord(input.rules) || Object.values(input.rules).some((rule) => !isRecord(rule) || !isString(rule.id)))) errors.push('rules 必须是以规则 ID 为键的对象')
+  if (input.rules !== undefined && isRecord(input.rules)) {
+    Object.values(input.rules).forEach((rule, index) => {
+      if (isRecord(rule) && rule.allowedMapIds !== undefined && (!Array.isArray(rule.allowedMapIds) || !rule.allowedMapIds.every(isString))) errors.push(`rules[${index}].allowedMapIds 必须是字符串数组`)
+    })
+  }
   if (input.events !== undefined && (!Array.isArray(input.events) || input.events.some((event) => !isRecord(event) || !isString(event.id) || !isNumber(event.dueTurn) || !isString(event.title) || !isString(event.body) || !Array.isArray(event.tags)))) errors.push('events 中存在格式错误的延迟事件')
+  if (input.maps !== undefined && (!Array.isArray(input.maps) || input.maps.length === 0)) errors.push('maps 必须是至少包含一张地图的数组')
+  if (Array.isArray(input.maps)) input.maps.forEach((map, index) => validateMap(map, index, errors))
+  if (world.startingMapId !== undefined && !isString(world.startingMapId)) errors.push('world.startingMapId 必须是字符串')
   return { valid: errors.length === 0, errors }
 }
 

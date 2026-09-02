@@ -9,6 +9,15 @@ describe('script package schema', () => {
     expect(result.errors).toEqual([])
   })
 
+  it('validates map metadata and rejects an invalid map seed', () => {
+    const script = structuredClone(getScript('western-world'))
+    expect(validateScriptPackage(script).valid).toBe(true)
+    script.maps![0].availableRoles = ['合法身份', 3 as unknown as string]
+    const result = validateScriptPackage(script)
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((error) => error.includes('maps[0].availableRoles'))).toBe(true)
+  })
+
   it('rejects malformed packages instead of partially importing them', () => {
     const invalid = structuredClone(getScript('dawnmere')) as unknown as Record<string, unknown>
     delete invalid.theme

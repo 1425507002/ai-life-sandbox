@@ -66,7 +66,13 @@ function copyFor(action: SuggestedAction, variantIndex: number): ActionCopy {
 }
 
 export function generateSuggestedActions(state: GameState, script: ScriptPackage): SuggestedAction[] {
-  const source = [...new Map(script.world.seedState.suggestedActions.map((action) => [action.ruleId ?? action.id, action])).values()]
+  const mapSeed = script.maps?.find((map) => map.id === state.world.mapId)?.seedState
+  const sourceState = mapSeed ?? script.world.seedState
+  const source = [...new Map(sourceState.suggestedActions.map((action) => [action.ruleId ?? action.id, action])).values()]
+    .filter((action) => {
+      const rule = script.rules?.[action.ruleId ?? action.id]
+      return !rule?.allowedMapIds?.length || !state.world.mapId || rule.allowedMapIds.includes(state.world.mapId)
+    })
   if (!source.length) return []
   const latestAction = state.history.find((event) => event.ruleId || (event.actionId && !event.actionId.startsWith('freeform:')))
   const latestRuleId = latestAction?.ruleId ?? latestAction?.actionId

@@ -5,6 +5,8 @@ import { scriptPackages } from './data/scripts'
 import { loadRuntime, saveRuntime, validateRuntimePayload } from './storage'
 import type { ActionGenerationMode, ActionSummary, GameSession, GameState, NavKey, ProviderConfig, ScriptPackage } from './types'
 import { validateScriptPackage } from './engine/scriptSchema'
+import { isUiThemeId } from './uiThemes'
+import type { UiThemeId } from './types'
 
 const DEFAULT_PROVIDER: ProviderConfig = ZHIPU_FLASH_PROVIDER
 const LEGACY_DEFAULT_PROVIDER: ProviderConfig = { endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: '', model: 'gpt-4o-mini' }
@@ -20,19 +22,25 @@ interface GameStore {
   sessions: Record<string, GameSession>
   scripts: ScriptPackage[]
   activeScriptId: string
+  activeLifeId: string
   activeNav: NavKey
   providerConfig: ProviderConfig
   actionMode: ActionGenerationMode
+  uiThemeId: UiThemeId
   hydrated: boolean
   lastAction: ActionSummary | null
   lastNotice: StoreNotice | null
   selectScript: (scriptId: string) => void
+  selectLife: (lifeId: string) => void
   setNav: (nav: NavKey) => void
   setActionMode: (mode: ActionGenerationMode) => void
+  setUiTheme: (themeId: UiThemeId) => void
   runAction: (input: string) => Promise<void>
   setProviderConfig: (config: Partial<ProviderConfig>) => void
   hydrate: () => Promise<void>
   resetSession: (scriptId?: string) => void
+  rollbackLife: (turn: number) => void
+  startNewLife: (setup?: { scriptId?: string; mapId?: string; player?: Partial<GameState['player']> }) => void
   updatePlayer: (patch: Partial<GameState['player']>) => void
   clearNotice: () => void
   notify: (notice: StoreNotice) => void
@@ -41,12 +49,49 @@ interface GameStore {
   getExportPayload: () => unknown
 }
 
+function defaultLifeId(scriptId: string) {
+  return `${scriptId}::default`
+}
+
 function makeSessions(scripts: ScriptPackage[]): Record<string, GameSession> {
-  return Object.fromEntries(scripts.map((script) => [script.manifest.id, { scriptId: script.manifest.id, state: buildInitialState(script) }]))
+  return Object.fromEntries(scripts.map((script) => {
+    const lifeId = defaultLifeId(script.manifest.id)
+    const state = buildInitialState(script)
+    return [lifeId, { lifeId, scriptId: script.manifest.id, label: '默认人生', state, snapshots: [{ turn: state.turn, state }] }]
+  }))
+}
+
+function legacyMapId(scriptId: string) {
+  return scriptId === 'tideglass' ? 'tide-harbor' : scriptId === 'dawnmere' ? 'mist-town' : undefined
+}
+
+function normalizeSessions(raw: unknown, scripts: ScriptPackage[]): Record<string, GameSession> {
+  const sessions = makeSessions(scripts)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return sessions
+  Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return
+    const candidate = value as Partial<GameSession>
+    const sourceScriptId = typeof candidate.scriptId === 'string' ? candidate.scriptId : key
+    const scriptId = scripts.some((script) => script.manifest.id === sourceScriptId) ? sourceScriptId : sourceScriptId === 'dawnmere' || sourceScriptId === 'tideglass' ? 'western-world' : undefined
+    const script = scriptId ? scripts.find((item) => item.manifest.id === scriptId) : undefined
+    if (!script || !scriptId || !candidate.state) return
+    const sourceLifeId = typeof candidate.lifeId === 'string' ? candidate.lifeId : `${scriptId}::legacy-${key}`
+    const lifeId = sourceLifeId.startsWith(`${scriptId}::`) ? sourceLifeId : `${scriptId}::${sourceLifeId}`
+    const mapId = candidate.state.world?.mapId ?? legacyMapId(sourceScriptId) ?? script.world.startingMapId
+    const state = { ...candidate.state, world: { ...candidate.state.world, mapId } }
+    sessions[lifeId] = { lifeId, scriptId, label: candidate.label ?? '迁移的人生', state, snapshots: candidate.snapshots?.length ? candidate.snapshots : [{ turn: state.turn, state }] }
+  })
+  return sessions
 }
 
 function mergeScripts(scripts: unknown): ScriptPackage[] {
-  const custom = Array.isArray(scripts) ? scripts.filter((script) => validateScriptPackage(script).valid) as ScriptPackage[] : []
+  const custom = Array.isArray(scripts)
+    ? scripts.filter((script) => {
+      if (!validateScriptPackage(script).valid) return false
+      const id = (script as Partial<ScriptPackage>).manifest?.id
+      return id !== 'dawnmere' && id !== 'tideglass'
+    }) as ScriptPackage[]
+    : []
   const merged = new Map(scriptPackages.map((script) => [script.manifest.id, script]))
   custom.forEach((script) => merged.set(script.manifest.id, script))
   return [...merged.values()]
@@ -60,35 +105,53 @@ function isActionGenerationMode(input: unknown): input is ActionGenerationMode {
   return input === 'guided' || input === 'varied' || input === 'freeform'
 }
 
-function persist(state: Pick<GameStore, 'sessions' | 'activeScriptId' | 'providerConfig' | 'actionMode' | 'scripts'>) {
-  void saveRuntime({ sessions: state.sessions, activeScriptId: state.activeScriptId, providerConfig: state.providerConfig, actionMode: state.actionMode, scripts: state.scripts })
+function persist(state: Pick<GameStore, 'sessions' | 'activeScriptId' | 'activeLifeId' | 'providerConfig' | 'actionMode' | 'uiThemeId' | 'scripts'>) {
+  void saveRuntime({ sessions: state.sessions, activeScriptId: state.activeScriptId, activeLifeId: state.activeLifeId, providerConfig: state.providerConfig, actionMode: state.actionMode, uiThemeId: state.uiThemeId, scripts: state.scripts })
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
   scripts: scriptPackages,
   sessions: makeSessions(scriptPackages),
-  activeScriptId: 'dawnmere',
+  activeScriptId: 'western-world',
+  activeLifeId: defaultLifeId('western-world'),
   activeNav: 'play',
   providerConfig: DEFAULT_PROVIDER,
   actionMode: 'guided',
+  uiThemeId: 'paper-journal',
   hydrated: false,
   lastAction: null,
   lastNotice: null,
   selectScript: (scriptId) => set((state) => {
     if (!state.scripts.some((script) => script.manifest.id === scriptId)) return state
-    const next = { ...state, activeScriptId: scriptId, activeNav: 'play' as NavKey }
+    const existing = Object.values(state.sessions).find((session) => session.scriptId === scriptId)
+    const lifeId = existing?.lifeId ?? defaultLifeId(scriptId)
+    const script = findScript(state.scripts, scriptId)
+    const initialState = buildInitialState(script)
+    const sessions = existing ? state.sessions : { ...state.sessions, [lifeId]: { lifeId, scriptId, label: '默认人生', state: initialState, snapshots: [{ turn: initialState.turn, state: initialState }] } }
+    const next = { ...state, sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play' as NavKey }
     persist(next)
     return { ...next, lastNotice: null }
+  }),
+  selectLife: (lifeId) => set((state) => {
+    const session = state.sessions[lifeId]
+    if (!session) return state
+    const next = { ...state, activeScriptId: session.scriptId, activeLifeId: lifeId, activeNav: 'play' as NavKey, lastAction: null, lastNotice: null }
+    persist(next)
+    return next
   }),
   setNav: (activeNav) => set({ activeNav }),
   setActionMode: (actionMode) => set((state) => {
     persist({ ...state, actionMode })
     return { actionMode }
   }),
+  setUiTheme: (uiThemeId) => set((state) => {
+    persist({ ...state, uiThemeId })
+    return { uiThemeId }
+  }),
   runAction: async (input) => {
-    const { activeScriptId, sessions, providerConfig, scripts } = get()
+    const { activeScriptId, activeLifeId, sessions, providerConfig, scripts } = get()
     const script = findScript(scripts, activeScriptId)
-    const session = sessions[activeScriptId]
+    const session = sessions[activeLifeId]
     if (!session) return
     const result = resolveAction(session.state, input, script)
     const [maybeNarrative, maybeCandidates] = result.outcome !== 'refused' ? await Promise.all([
@@ -100,13 +163,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ...(maybeNarrative ? { world: { ...result.state.world, narrative: maybeNarrative } } : {}),
       ...(maybeCandidates ? { suggestedActions: maybeCandidates } : {}),
     }
-    const nextSessions = { ...sessions, [activeScriptId]: { ...session, state: finalState } }
+    const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }]), { turn: finalState.turn, state: finalState }].slice(-25)
+    const nextSessions = { ...sessions, [activeLifeId]: { ...session, state: finalState, snapshots } }
     const aiConfigured = Boolean(providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim())
     const lastNotice = aiConfigured && !maybeNarrative && !maybeCandidates
       ? { type: 'error' as const, message: '规则已完成，但 AI 服务未响应；已使用本地行动和叙事。' }
       : maybeNarrative || maybeCandidates ? { type: 'success' as const, message: '行动已结算，AI 候选与叙事已按规则接入。' } : null
     set({ sessions: nextSessions, lastAction: { title: result.title, feedback: result.feedback, outcome: result.outcome, timeLabel: result.timeLabel, deltas: result.deltas, stateDiff: result.stateDiff }, lastNotice })
-    persist({ sessions: nextSessions, activeScriptId, providerConfig, actionMode: get().actionMode, scripts })
+    persist({ sessions: nextSessions, activeScriptId, activeLifeId, providerConfig, actionMode: get().actionMode, uiThemeId: get().uiThemeId, scripts })
   },
   setProviderConfig: (config) => set((state) => {
     const providerConfig = { ...state.providerConfig, ...config }
@@ -114,9 +178,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return { providerConfig }
   }),
   updatePlayer: (patch) => set((state) => {
-    const session = state.sessions[state.activeScriptId]
+    const session = state.sessions[state.activeLifeId]
     if (!session) return state
-    const sessions = { ...state.sessions, [state.activeScriptId]: { ...session, state: { ...session.state, player: { ...session.state.player, ...patch } } } }
+    const nextState = { ...session.state, player: { ...session.state.player, ...patch } }
+    const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }])]
+    if (snapshots.length && snapshots[snapshots.length - 1].turn === nextState.turn) snapshots[snapshots.length - 1] = { turn: nextState.turn, state: nextState }
+    const sessions = { ...state.sessions, [state.activeLifeId]: { ...session, state: nextState, snapshots } }
     persist({ ...state, sessions })
     return { sessions, lastNotice: { type: 'success', message: '角色档案已保存到本地。' } }
   }),
@@ -125,15 +192,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
   hydrate: async () => {
     const runtime = await loadRuntime()
     const scripts = mergeScripts(runtime?.scripts)
-    const sessions = { ...makeSessions(scripts), ...(runtime?.sessions ?? {}) }
-    const activeScriptId = runtime?.activeScriptId && scripts.some((script) => script.manifest.id === runtime.activeScriptId) ? runtime.activeScriptId : scripts[0].manifest.id
-    set({ scripts, sessions, activeScriptId, providerConfig: migrateProviderConfig(runtime?.providerConfig), actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', hydrated: true, lastNotice: null })
+    const sessions = normalizeSessions(runtime?.sessions, scripts)
+    const requestedScriptId = runtime?.activeScriptId === 'dawnmere' || runtime?.activeScriptId === 'tideglass' ? 'western-world' : runtime?.activeScriptId
+    const activeScriptId = requestedScriptId && scripts.some((script) => script.manifest.id === requestedScriptId) ? requestedScriptId : scripts[0].manifest.id
+    const activeLifeId = runtime?.activeLifeId && sessions[runtime.activeLifeId]?.scriptId === activeScriptId ? runtime.activeLifeId : Object.values(sessions).find((session) => session.scriptId === activeScriptId)?.lifeId ?? defaultLifeId(activeScriptId)
+    set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig: migrateProviderConfig(runtime?.providerConfig), actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', uiThemeId: isUiThemeId(runtime?.uiThemeId) ? runtime.uiThemeId : 'paper-journal', hydrated: true, lastNotice: null })
   },
   resetSession: (scriptId = get().activeScriptId) => set((state) => {
     const script = findScript(state.scripts, scriptId)
-    const sessions = { ...state.sessions, [scriptId]: { scriptId, state: buildInitialState(script) } }
+    const activeSession = Object.values(state.sessions).find((session) => session.scriptId === scriptId && session.lifeId === state.activeLifeId) ?? Object.values(state.sessions).find((session) => session.scriptId === scriptId)
+    const lifeId = activeSession?.lifeId ?? defaultLifeId(scriptId)
+    const resetState = buildInitialState(script, activeSession?.state.world.mapId)
+    const sessions = { ...state.sessions, [lifeId]: { lifeId, scriptId, label: activeSession?.label ?? '默认人生', state: resetState, snapshots: [{ turn: resetState.turn, state: resetState }] } }
+    persist({ ...state, sessions, activeLifeId: lifeId })
+    return { sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play', lastAction: null, lastNotice: { type: 'info', message: '当前人生已经重新开始。' } }
+  }),
+  startNewLife: (setup = {}) => set((state) => {
+    const scriptId = setup.scriptId ?? state.activeScriptId
+    const script = findScript(state.scripts, scriptId)
+    const base = buildInitialState(script, setup.mapId)
+    const selectedMap = script.maps?.find((map) => map.id === base.world.mapId)
+    const allowedRole = selectedMap?.availableRoles?.includes(setup.player?.role ?? '')
+    const allowedProfession = selectedMap?.availableProfessions?.includes(setup.player?.profession ?? '')
+    const player = {
+      ...base.player,
+      ...setup.player,
+      ...(selectedMap?.availableRoles?.length && !allowedRole ? { role: selectedMap.availableRoles[0] } : {}),
+      ...(selectedMap?.availableProfessions?.length && !allowedProfession ? { profession: selectedMap.availableProfessions[0] } : {}),
+    }
+    const lifeId = `${scriptId}::life-${Date.now()}`
+    const newState = { ...base, player }
+    const sessions = { ...state.sessions, [lifeId]: { lifeId, scriptId, label: player.name || '未命名人生', state: newState, snapshots: [{ turn: newState.turn, state: newState }] } }
+    persist({ ...state, sessions, activeScriptId: scriptId, activeLifeId: lifeId })
+    return { sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play', lastAction: null, lastNotice: { type: 'success', message: `新人生已从${selectedMap?.title ?? '当前世界'}开始。` } }
+  }),
+  rollbackLife: (turn) => set((state) => {
+    const session = state.sessions[state.activeLifeId]
+    if (!session) return state
+    const snapshots = session.snapshots ?? [{ turn: session.state.turn, state: session.state }]
+    const target = [...snapshots].reverse().find((snapshot) => snapshot.turn <= turn)
+    if (!target || target.turn >= session.state.turn) return { lastNotice: { type: 'info', message: '当前已经是这条人生的最早记录。' } }
+    const nextSession = { ...session, state: structuredClone(target.state), snapshots: snapshots.filter((snapshot) => snapshot.turn <= target.turn) }
+    const sessions = { ...state.sessions, [state.activeLifeId]: nextSession }
     persist({ ...state, sessions })
-    return { sessions, activeScriptId: scriptId, activeNav: 'play', lastAction: null, lastNotice: { type: 'info', message: '当前人生已经重新开始。' } }
+    return { sessions, activeNav: 'play', lastAction: null, lastNotice: { type: 'success', message: `已回到第 ${target.turn} 次记录，之后的变化被保留为未发生。` } }
   }),
   importRuntime: (runtime) => {
     if (!runtime || typeof runtime !== 'object') return
@@ -141,14 +243,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ lastNotice: { type: 'error', message: '存档格式或版本不受支持，未导入任何内容。' } })
       return
     }
-    const candidate = runtime as Partial<{ sessions: Record<string, GameSession>; activeScriptId: string; providerConfig: ProviderConfig; actionMode: ActionGenerationMode; scripts: ScriptPackage[] }>
+    const candidate = runtime as Partial<{ sessions: Record<string, GameSession>; activeScriptId: string; activeLifeId: string; providerConfig: ProviderConfig; actionMode: ActionGenerationMode; uiThemeId: UiThemeId; scripts: ScriptPackage[] }>
     const scripts = mergeScripts(candidate.scripts ?? get().scripts)
-    const activeScriptId = candidate.activeScriptId && scripts.some((script) => script.manifest.id === candidate.activeScriptId) ? candidate.activeScriptId : scripts[0].manifest.id
-    const sessions = { ...makeSessions(scripts), ...candidate.sessions }
+    const requestedScriptId = candidate.activeScriptId === 'dawnmere' || candidate.activeScriptId === 'tideglass' ? 'western-world' : candidate.activeScriptId
+    const activeScriptId = requestedScriptId && scripts.some((script) => script.manifest.id === requestedScriptId) ? requestedScriptId : scripts[0].manifest.id
+    const sessions = normalizeSessions(candidate.sessions, scripts)
+    const activeLifeId = candidate.activeLifeId && sessions[candidate.activeLifeId]?.scriptId === activeScriptId ? candidate.activeLifeId : Object.values(sessions).find((session) => session.scriptId === activeScriptId)?.lifeId ?? defaultLifeId(activeScriptId)
     const providerConfig = migrateProviderConfig(candidate.providerConfig)
     const actionMode = isActionGenerationMode(candidate.actionMode) ? candidate.actionMode : 'guided'
-    set({ scripts, sessions, activeScriptId, providerConfig, actionMode, activeNav: 'play', lastNotice: { type: 'success', message: '存档已导入，当前世界已恢复。' } })
-    persist({ sessions, activeScriptId, providerConfig, actionMode, scripts })
+    const uiThemeId = isUiThemeId(candidate.uiThemeId) ? candidate.uiThemeId : get().uiThemeId
+    set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, activeNav: 'play', lastNotice: { type: 'success', message: '存档已导入，当前世界已恢复。' } })
+    persist({ sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, scripts })
   },
   importScriptPackage: (input) => {
     const validation = validateScriptPackage(input)
@@ -159,14 +264,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const script = input as ScriptPackage
     set((state) => {
       const scripts = [...state.scripts.filter((item) => item.manifest.id !== script.manifest.id), script]
-      const sessions = { ...state.sessions, [script.manifest.id]: state.sessions[script.manifest.id] ?? { scriptId: script.manifest.id, state: buildInitialState(script) } }
-      persist({ ...state, scripts, sessions, activeScriptId: script.manifest.id })
-      return { scripts, sessions, activeScriptId: script.manifest.id, activeNav: 'play' as NavKey, lastAction: null, lastNotice: { type: 'success', message: `剧本「${script.manifest.title}」已加载。` } }
+      const lifeId = defaultLifeId(script.manifest.id)
+      const initialState = buildInitialState(script)
+      const sessions = { ...state.sessions, [lifeId]: state.sessions[lifeId] ?? { lifeId, scriptId: script.manifest.id, label: '默认人生', state: initialState, snapshots: [{ turn: initialState.turn, state: initialState }] } }
+      persist({ ...state, scripts, sessions, activeScriptId: script.manifest.id, activeLifeId: lifeId })
+      return { scripts, sessions, activeScriptId: script.manifest.id, activeLifeId: lifeId, activeNav: 'play' as NavKey, lastAction: null, lastNotice: { type: 'success', message: `剧本「${script.manifest.title}」已加载。` } }
     })
     return true
   },
   getExportPayload: () => {
-    const { sessions, activeScriptId, providerConfig, actionMode, scripts } = get()
-    return { format: 'ai-life-world-save', version: 1, exportedAt: new Date().toISOString(), sessions, activeScriptId, providerConfig, actionMode, scripts }
+    const { sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, scripts } = get()
+    return { format: 'ai-life-world-save', version: 2, exportedAt: new Date().toISOString(), sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, scripts }
   },
 }))

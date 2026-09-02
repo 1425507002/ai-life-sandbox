@@ -31,6 +31,7 @@ describe('suggestion engine', () => {
     const script = getScript('dawnmere')
     const singleActionScript = {
       ...script,
+      maps: [],
       world: { ...script.world, seedState: { ...script.world.seedState, suggestedActions: [script.world.seedState.suggestedActions[0]] } },
     }
     const state = buildInitialState(singleActionScript)

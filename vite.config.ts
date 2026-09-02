@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // Resolve the project from the process working directory. This keeps Vite's
+  // HTML asset names relative when the Chinese Windows path is temporarily
+  // mounted to an ASCII drive for local builds and tests.
+  root: process.cwd(),
+  resolve: { preserveSymlinks: true },
   plugins: [
     react(),
     VitePWA({

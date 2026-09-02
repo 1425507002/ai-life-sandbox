@@ -1,4 +1,4 @@
-import type { ActionGenerationMode, GameSession, ProviderConfig, ScriptPackage } from './types'
+import type { ActionGenerationMode, GameSession, ProviderConfig, ScriptPackage, UiThemeId } from './types'
 
 const DB_NAME = 'ai-life-worlds'
 const STORE_NAME = 'runtime'
@@ -7,8 +7,10 @@ const RUNTIME_KEY = 'runtime-v1'
 interface PersistedRuntime {
   sessions: Record<string, GameSession>
   activeScriptId: string
+  activeLifeId?: string
   providerConfig: ProviderConfig
   actionMode?: ActionGenerationMode
+  uiThemeId?: UiThemeId
   scripts?: ScriptPackage[]
 }
 

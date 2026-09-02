@@ -15,7 +15,7 @@ describe('action engine', () => {
     expect(result.state.turn).toBe(state.turn + 1)
     expect(result.state.player.stamina).toBeLessThan(state.player.stamina)
     expect(result.state.history[0].ruleId).toBe('market')
-    expect(result.state.history[0].actionId).toContain('dawnmere:market:')
+    expect(result.state.history[0].actionId).toContain('western-world:market:')
     expect(result.state.history[0].stateDiff?.some((diff) => diff.key === 'player.stamina')).toBe(true)
     expect(result.state.suggestedActions.every((action) => action.ruleId !== 'market')).toBe(true)
     expect(result.state.suggestedActions.map((action) => action.title)).not.toEqual(state.suggestedActions.map((action) => action.title))
@@ -25,13 +25,20 @@ describe('action engine', () => {
   })
 
   it('charges the tavern cost exactly once', () => {
-    const state = buildInitialState(harborScript)
-    const startingMoney = state.player.money
-    const result = resolveAction(state, '去潮声酒馆听听今晚的消息', harborScript)
+    const harborState = buildInitialState(harborScript, 'tide-harbor')
+    const startingMoney = harborState.player.money
+    const result = resolveAction(harborState, '去潮声酒馆听听今晚的消息', harborScript)
 
     expect(result.outcome).toBe('success')
     expect(result.state.player.money).toBe(startingMoney - 5)
     expect(result.deltas).toContain('花费 5 枚铜币')
+  })
+
+  it('only offers actions that belong to the active map', () => {
+    const harborState = buildInitialState(harborScript, 'tide-harbor')
+    expect(harborState.suggestedActions.length).toBeGreaterThan(0)
+    expect(harborState.suggestedActions.every((action) => ['dock', 'rhea', 'tavern', 'lighthouse'].includes(action.ruleId ?? action.id))).toBe(true)
+    expect(harborState.suggestedActions.some((action) => (action.ruleId ?? action.id) === 'market')).toBe(false)
   })
 
   it('refuses actions that exceed the player resources without mutating state', () => {

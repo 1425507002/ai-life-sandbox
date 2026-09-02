@@ -4,6 +4,10 @@ export type ActionOutcome = 'success' | 'partial' | 'refused' | 'failed' | 'unkn
 
 export type ActionGenerationMode = 'guided' | 'varied' | 'freeform'
 
+export type AgeStage = 'baby' | 'child' | 'teen' | 'adult' | 'elder'
+
+export type UiThemeId = 'paper-journal' | 'twilight-library' | 'field-notes' | 'harbor-postcard'
+
 export type ConditionOperator = 'min' | 'max' | 'equals' | 'includes' | 'not-includes'
 
 export interface RuleCondition {
@@ -17,6 +21,7 @@ export interface ActionRule {
   id: string
   conditions?: RuleCondition[]
   allowedLocations?: string[]
+  allowedMapIds?: string[]
   blockedMessage?: string
   delayedEventId?: string
 }
@@ -37,6 +42,7 @@ export interface CharacterCreationConfig {
   roles: string[]
   professions: string[]
   traits: string[]
+  ageStages?: Array<{ id: AgeStage; label: string; minAge: number; maxAge: number; description: string }>
 }
 
 export interface ThemeTokens {
@@ -98,6 +104,7 @@ export interface SuggestedAction {
 
 export interface EventLog {
   id: string
+  turn?: number
   actionId?: string
   ruleId?: string
   date: string
@@ -127,6 +134,7 @@ export interface WorldState {
   narrative: string[]
   currentFocus: string
   publicNews: string[]
+  mapId?: string
 }
 
 export interface GameState {
@@ -154,18 +162,37 @@ export interface ScriptPackage {
   }
   theme: ThemeTokens
   characterCreation?: CharacterCreationConfig
+  maps?: MapDefinition[]
   rules?: Record<string, ActionRule>
   events?: ScheduledEvent[]
   world: {
     startingLocation: string
+    startingMapId?: string
     opening: string[]
     seedState: GameState
   }
 }
 
+export interface MapDefinition {
+  id: string
+  title: string
+  subtitle: string
+  description: string
+  region: string
+  kind: string
+  startingLocation: string
+  opening: string[]
+  availableRoles?: string[]
+  availableProfessions?: string[]
+  seedState: GameState
+}
+
 export interface GameSession {
+  lifeId?: string
   scriptId: string
+  label?: string
   state: GameState
+  snapshots?: Array<{ turn: number; state: GameState }>
 }
 
 export interface ProviderConfig {
