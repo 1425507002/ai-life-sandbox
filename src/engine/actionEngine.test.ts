@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInitialState, resolveAction } from './actionEngine'
+import { buildInitialState, buildNewLifeState, resolveAction } from './actionEngine'
 import { getScript } from '../data/scripts'
 
 describe('action engine', () => {
@@ -103,5 +103,53 @@ describe('action engine', () => {
 
     expect(result.state.world.day).toBe(8)
     expect(result.state.world.time).toBe('深夜 · 00:25')
+  })
+
+  it('creates a clean age-aware baby life instead of reusing the demo seed', () => {
+    const state = buildNewLifeState(script, { mapId: 'tide-harbor', ageStage: 'baby', player: { name: '婴儿测试', age: 0 } })
+
+    expect(state.turn).toBe(0)
+    expect(state.world.day).toBe(1)
+    expect(state.world.time).toBe('清晨 · 07:00')
+    expect(state.history).toHaveLength(0)
+    expect(state.knownFacts).toHaveLength(0)
+    expect(state.scheduledEvents).toHaveLength(0)
+    expect(state.player.ageStage).toBe('baby')
+    expect(state.player.role).toBe('被照料的孩子')
+    expect(state.player.profession).toBe('尚未拥有职业')
+    expect(state.suggestedActions.every((action) => action.ruleId?.startsWith('baby-'))).toBe(true)
+    expect(state.suggestedActions.some((action) => action.ruleId === 'dock')).toBe(false)
+
+    const blocked = resolveAction(state, '去码头问问乔恩', script)
+    expect(blocked.outcome).toBe('refused')
+    expect(blocked.deltas).toContain('年龄阶段不满足')
+    expect(blocked.state.turn).toBe(0)
+  })
+
+  it('does not let an unverified baby free-form action bypass age rules', () => {
+    const state = buildNewLifeState(script, { ageStage: 'baby', player: { name: '自由行动测试', age: 0 } })
+    const result = resolveAction(state, '去外地工作', script)
+
+    expect(result.outcome).toBe('refused')
+    expect(result.state.turn).toBe(0)
+    expect(result.deltas).toContain('年龄阶段未验证')
+  })
+
+  it('derives the age stage from an explicit numeric age', () => {
+    const state = buildNewLifeState(script, { ageStage: 'baby', player: { name: '年龄优先测试', age: 18 } })
+
+    expect(state.player.age).toBe(18)
+    expect(state.player.ageStage).toBe('adult')
+    expect(state.player.profession).not.toBe('尚未拥有职业')
+  })
+
+  it('resolves an age-specific action without adult side effects', () => {
+    const state = buildNewLifeState(script, { ageStage: 'child', player: { name: '童年测试' } })
+    const result = resolveAction(state, state.suggestedActions[0].title, script)
+
+    expect(result.outcome).toBe('success')
+    expect(result.state.turn).toBe(1)
+    expect(result.state.history[0].ruleId).toMatch(/^child-/)
+    expect(result.state.player.profession).toBe('学生')
   })
 })

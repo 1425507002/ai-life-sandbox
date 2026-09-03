@@ -39,7 +39,7 @@ const dawnmere: ScriptPackage = {
     ],
     seedState: {
       player: {
-        name: '林澄', age: 22, role: '普通居民', profession: '木匠学徒', mood: '平静',
+        name: '林澄', age: 22, ageStage: 'adult', role: '普通居民', profession: '木匠学徒', mood: '平静',
         health: 82, stamina: 68, money: 42, reputation: 12, traits: ['耐心', '手巧', '还在寻找方向'],
       },
       world: {
@@ -112,7 +112,7 @@ const tideglass: ScriptPackage = {
     startingLocation: '灰潮港 · 灯塔街',
     opening: ['海风把盐味送进半开的窗。', '港口刚刚退潮，湿石路上留下了一层闪光的水。', '今天的第一班货船午后靠岸，而你还没有决定要不要去码头看看。'],
     seedState: {
-      player: { name: '沈原', age: 27, role: '港口居民', profession: '船具店帮工', mood: '有些犹豫', health: 76, stamina: 62, money: 58, reputation: 18, traits: ['观察敏锐', '不喜欢欠人情', '对远方好奇'] },
+      player: { name: '沈原', age: 27, ageStage: 'adult', role: '港口居民', profession: '船具店帮工', mood: '有些犹豫', health: 76, stamina: 62, money: 58, reputation: 18, traits: ['观察敏锐', '不喜欢欠人情', '对远方好奇'] },
       world: { day: 12, time: '黄昏 · 17:10', season: '晚夏', weather: '海风', location: '灰潮港 · 灯塔街', region: '西海岸', atmosphere: '潮湿 · 有人声', headline: '一艘没有挂出港旗的旧货船正在外港减速。', narrative: [], currentFocus: '决定今晚是否去码头', publicNews: ['西堤仓库临时招工', '灯塔管理员在找丢失的钥匙', '外港有一艘陌生货船'] },
       npcs: [
         { id: 'rhea', name: '瑞娅', role: '船具店老板', avatar: 'R', summary: '精打细算，但会记住每个认真工作的人。', relationship: 31, lastInteraction: '今天下午一起盘点了麻绳', status: '正在关店', schedule: ['正在关店', '核对今天的船具账目', '把潮湿的帆布挂到后院'] },
@@ -139,6 +139,31 @@ const tideglass: ScriptPackage = {
   },
 }
 
+const ageStageActions = {
+  baby: [
+    { id: 'baby-care', ruleId: 'baby-care', title: '接受照料', description: '让照料者安排喂食、擦洗和安抚，先把身体照顾好。', location: '住处', timeCost: 45, moneyCost: 0, staminaCost: 1, risk: '几乎没有', tone: 'sky' },
+    { id: 'baby-observe', ruleId: 'baby-observe', title: '观察熟悉的声音', description: '在安全的住处听一听、看一看，把一个细节留在记忆里。', location: '住处', timeCost: 30, moneyCost: 0, staminaCost: 1, risk: '几乎没有', tone: 'sage' },
+    { id: 'baby-rest', ruleId: 'baby-rest', title: '安稳睡一觉', description: '在照料下休息，让身体和精力慢慢恢复。', location: '住处', timeCost: 90, moneyCost: 0, staminaCost: 0, risk: '没有', tone: 'gold' },
+  ],
+  child: [
+    { id: 'child-play', ruleId: 'child-play', title: '在住处附近玩耍', description: '只在熟悉又安全的地方玩一会儿，记住附近的路。', location: '住处', timeCost: 60, moneyCost: 0, staminaCost: 3, risk: '低', tone: 'sage' },
+    { id: 'child-learn', ruleId: 'child-learn', title: '学习基础知识', description: '跟着照料者认字、认路或认识生活中常见的东西。', location: '住处', timeCost: 50, moneyCost: 0, staminaCost: 2, risk: '几乎没有', tone: 'sky' },
+    { id: 'child-help', ruleId: 'child-help', title: '帮家里做一点小事', description: '完成自己拿得动、做得到的整理和递送。', location: '住处', timeCost: 45, moneyCost: 0, staminaCost: 4, risk: '低', tone: 'gold' },
+  ],
+  teen: [
+    { id: 'teen-study', ruleId: 'teen-study', title: '整理学习方向', description: '花时间比较学习、手艺和未来工作需要的准备。', location: '住处', timeCost: 90, moneyCost: 0, staminaCost: 4, risk: '低', tone: 'sky' },
+    { id: 'teen-apprentice', ruleId: 'teen-apprentice', title: '打听学徒机会', description: '在生活圈附近询问是否有人愿意教你一门手艺。', location: '住处', timeCost: 80, moneyCost: 0, staminaCost: 6, risk: '低', tone: 'gold' },
+    { id: 'teen-explore', ruleId: 'teen-explore', title: '探索生活圈边缘', description: '只沿安全路线走一段，不进入当前年龄不适合的危险区域。', location: '住处', timeCost: 110, moneyCost: 0, staminaCost: 8, risk: '中', tone: 'coral' },
+  ],
+  elder: [
+    { id: 'elder-rest', ruleId: 'elder-rest', title: '放慢节奏休息', description: '照顾身体，把今天的安排调整得更从容。', location: '住处', timeCost: 60, moneyCost: 0, staminaCost: 0, risk: '没有', tone: 'sky' },
+    { id: 'elder-teach', ruleId: 'elder-teach', title: '传授一段经验', description: '把自己熟悉的经验讲给愿意倾听的人。', location: '住处', timeCost: 70, moneyCost: 0, staminaCost: 2, risk: '低', tone: 'gold' },
+    { id: 'elder-walk', ruleId: 'elder-walk', title: '沿熟悉街道散步', description: '沿着熟悉的路线走一圈，看看环境有什么变化。', location: '住处', timeCost: 60, moneyCost: 0, staminaCost: 5, risk: '低', tone: 'sage' },
+  ],
+} as const
+
+const ageActionRules = Object.fromEntries(Object.entries(ageStageActions).flatMap(([stage, actions]) => actions.map((action) => [action.ruleId, { id: action.ruleId, allowedAgeStages: [stage], blockedMessage: '这个行动只适合当前对应的年龄阶段。' }])) )
+
 const westernWorld: ScriptPackage = {
   manifest: {
     id: 'western-world',
@@ -162,7 +187,14 @@ const westernWorld: ScriptPackage = {
       { id: 'adult', label: '成年期', minAge: 18, maxAge: 59, description: '拥有完整的职业、迁居、交易和关系选择。' },
       { id: 'elder', label: '老年期', minAge: 60, maxAge: 120, description: '经验更丰富，但体力、健康和时间安排需要更谨慎。' },
     ],
+    ageStageProfiles: {
+      baby: { roles: ['被照料的孩子'], professions: ['尚未拥有职业'], startingHealth: 70, startingStamina: 25, startingMoney: 0, startingReputation: 0, startingInventory: [], startingMood: '需要照料' },
+      child: { roles: ['镇上孩子'], professions: ['学生'], startingHealth: 82, startingStamina: 40, startingMoney: 2, startingReputation: 0, startingInventory: [], startingMood: '精力充沛' },
+      teen: { roles: ['少年学徒'], professions: ['学徒候选'], startingHealth: 88, startingStamina: 60, startingMoney: 8, startingReputation: 0, startingInventory: ['简易随身包'], startingMood: '正在寻找方向' },
+      elder: { roles: ['退休居民'], professions: ['自由顾问'], startingHealth: 78, startingStamina: 45, startingMoney: 30, startingReputation: 0, startingInventory: ['旧怀表'], startingMood: '沉静' },
+    },
   },
+  ageStageActions,
   maps: [
     {
       id: 'mist-town', title: '晨雾镇', subtitle: '北境边缘 · 边境小镇', description: dawnmere.manifest.description,
@@ -176,13 +208,17 @@ const westernWorld: ScriptPackage = {
     },
   ],
   rules: {
-    forest: { ...dawnmere.rules?.forest, id: 'forest', allowedMapIds: ['mist-town'] },
-    market: { ...dawnmere.rules?.market, id: 'market', allowedMapIds: ['mist-town'] },
-    smith: { ...dawnmere.rules?.smith, id: 'smith', allowedMapIds: ['mist-town'] },
-    tavern: { ...tideglass.rules?.tavern, id: 'tavern', allowedMapIds: ['tide-harbor'] },
-    lighthouse: { ...tideglass.rules?.lighthouse, id: 'lighthouse', allowedMapIds: ['tide-harbor'] },
-    dock: { ...tideglass.rules?.dock, id: 'dock', allowedMapIds: ['tide-harbor'] },
+    forest: { ...dawnmere.rules?.forest, id: 'forest', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
+    market: { ...dawnmere.rules?.market, id: 'market', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
+    smith: { ...dawnmere.rules?.smith, id: 'smith', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
+    tidy: { id: 'tidy', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
+    tavern: { ...tideglass.rules?.tavern, id: 'tavern', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
+    rhea: { id: 'rhea', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
+    lighthouse: { ...tideglass.rules?.lighthouse, id: 'lighthouse', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
+    dock: { ...tideglass.rules?.dock, id: 'dock', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
+    ...ageActionRules,
   },
+  incidentPolicy: { enabled: true, chance: 0.18, maxScheduled: 2 },
   events: [...(dawnmere.events ?? []), ...(tideglass.events ?? [])],
   world: {
     startingMapId: 'mist-town', startingLocation: dawnmere.world.startingLocation, opening: dawnmere.world.opening,

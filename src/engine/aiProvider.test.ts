@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkProviderConnection, generateNarration } from './aiProvider'
+import { checkProviderConnection, generateIncident, generateNarration } from './aiProvider'
 import { buildInitialState } from './actionEngine'
 import { getScript } from '../data/scripts'
 
@@ -66,5 +66,15 @@ describe('checkProviderConnection', () => {
     expect(context.context.recentHistory).toHaveLength(8)
     expect(context.context.memory.summary).toContain('旧事 8')
     expect(context.state).toBeUndefined()
+  })
+
+  it('accepts only bounded AI incident candidates tied to existing NPCs', async () => {
+    const state = buildInitialState(getScript('western-world'))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: { title: '米拉送来一封短笺', body: '米拉让邻居捎来一封短笺，说她在集市听见了新的桥讯。', kind: 'encounter', tags: ['人物', '线索'], dueInTurns: 1, npcId: 'mira', relationshipDelta: 1 } }) } }] }), { status: 200 })))
+
+    const result = await generateIncident(provider, { state, script: getScript('western-world') })
+    expect(result?.npcId).toBe('mira')
+    const request = vi.mocked(fetch).mock.calls[0]?.[1]
+    expect(String(request?.body)).not.toContain('"player":{"name"')
   })
 })

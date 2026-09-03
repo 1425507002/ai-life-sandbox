@@ -1,6 +1,7 @@
-import type { GameState, ProviderConfig, ScriptPackage, SuggestedAction } from '../types'
+import type { GameState, IncidentCandidate, ProviderConfig, ScriptPackage, SuggestedAction } from '../types'
 import { validateSuggestedAction } from './scriptSchema'
 import { buildMemoryPacket } from './memory'
+import { validateIncidentCandidate } from './incidents'
 
 export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -166,6 +167,35 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
       return true
     }).map((action, index) => ({ ...action, id: `ai:${action.ruleId ?? action.id}:${request.state.turn}:${index}`, ruleId: action.ruleId ?? action.id }))
     return candidates.length ? candidates.slice(0, 6) : null
+  } catch {
+    return null
+  }
+}
+
+export interface IncidentRequest {
+  state: GameState
+  script: ScriptPackage
+}
+
+export async function generateIncident(config: ProviderConfig, request: IncidentRequest): Promise<IncidentCandidate | null> {
+  if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
+  try {
+    const response = await postCompletion(config, {
+      model: config.model,
+      temperature: 0.9,
+      messages: [
+        { role: 'system', content: '你是 AI 人生模拟器的突发事件候选助手。根据给定的有限上下文，偶尔提出一个小型、可延后的生活事件；也可以返回 null。绝对不能直接修改金钱、物品、健康、时间或事实。只能返回 JSON：{"incident":null} 或 {"incident":{"title":"","body":"","kind":"opportunity|complication|encounter|weather","tags":[],"dueInTurns":1,"npcId":"可选","relationshipDelta":0}}。标题不超过100字，正文不超过420字，最多4个标签，关系变化只能是-2到2。' },
+        { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, context: buildMemoryPacket(request.state), npcs: request.state.npcs.slice(0, 8).map((npc) => ({ id: npc.id, name: npc.name, role: npc.role, relationship: npc.relationship })) }) },
+      ],
+      response_format: { type: 'json_object' },
+    })
+    if (!response.ok) return null
+    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+    const content = payload.choices?.[0]?.message?.content
+    if (!content) return null
+    const parsed = JSON.parse(content) as { incident?: unknown }
+    if (parsed.incident === null || parsed.incident === undefined) return null
+    return validateIncidentCandidate(parsed.incident, request.state) ? parsed.incident : null
   } catch {
     return null
   }

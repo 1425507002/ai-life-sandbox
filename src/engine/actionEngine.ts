@@ -1,6 +1,7 @@
-import type { ActionResult, GameState, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
+import type { ActionResult, AgeStage, GameState, MemoryState, NewLifeSetup, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
 import { generateSuggestedActions } from './suggestionEngine'
 import { compressMemory } from './memory'
+import { blockedAgeMessage, clampAgeToStage, getAgeOptions, getAgeStageDefinition, getAgeStageForAge, getAgeStageProfile, isAgeAllowed } from './ageRules'
 
 const pad = (value: number) => value.toString().padStart(2, '0')
 
@@ -128,6 +129,87 @@ function genericOutcome(state: GameState, input: string, script: ScriptPackage):
   return { outcome: 'unknown', title: '事情还没有定论', narrative: next.world.narrative, feedback: '这个行动可以开始，但现在更像是一个需要继续观察的方向。', timeLabel: '约 25 分钟', deltas: ['精力 -3', '新增一个待确认事项'], stateDiff: stateDiff(state, next), state: next }
 }
 
+function resolveAgeAction(next: GameState, actionRule: string) {
+  const narrative: string[] = []
+  const deltas: string[] = []
+  let outcome: ActionResult['outcome'] = 'success'
+  if (actionRule === 'baby-care') {
+    next.player.health = Math.min(100, next.player.health + 2)
+    next.player.stamina = Math.max(0, next.player.stamina - 1)
+    next.world.currentFocus = '熟悉的照料让今天安稳下来'
+    narrative.push('照料者替你整理好衣物和被褥，喂食、擦洗与安抚占去了上午的大半时间。', '你还不能决定远方的事，但能感受到熟悉的声音和温暖正在变成安全感。')
+    deltas.push('状态 +2', '精力 -1')
+  } else if (actionRule === 'baby-observe') {
+    next.player.stamina = Math.max(0, next.player.stamina - 1)
+    next.knownFacts = [...new Set([...next.knownFacts, '你记住了住处里一个熟悉的声音'])]
+    next.world.currentFocus = '记住一个熟悉的声音'
+    narrative.push('你睁大眼睛看着窗边的光影，屋里的人声、木门的吱呀和远处的钟声逐渐有了区别。', '这算不上一次远行，却是你第一次主动把世界留在记忆里。')
+    deltas.push('精力 -1', '记住一个熟悉的声音')
+  } else if (actionRule === 'baby-rest') {
+    next.player.stamina = Math.min(100, next.player.stamina + 5)
+    next.world.currentFocus = '在照料下安稳休息'
+    narrative.push('你在熟悉的气味和轻声哼唱里睡了一觉。醒来时窗外的光线已经换了位置。', '今天没有发生惊天动地的事，但身体得到了真正需要的休息。')
+    deltas.push('精力 +5')
+  } else if (actionRule === 'child-play') {
+    next.player.stamina = Math.max(0, next.player.stamina - 3)
+    next.player.mood = '玩得很开心'
+    next.world.currentFocus = '记住住处附近可以玩耍的地方'
+    narrative.push('你在住处附近玩了一阵，石子、木棍和水沟都足够成为一场小小的冒险。', '回家时鞋底沾了泥，但你已经记住了哪条路最安全。')
+    deltas.push('精力 -3', '心情变得轻快')
+  } else if (actionRule === 'child-learn') {
+    next.player.stamina = Math.max(0, next.player.stamina - 2)
+    next.knownFacts = [...new Set([...next.knownFacts, '你学会了一个适合当前年龄的基础词汇'])]
+    next.world.currentFocus = '继续学习基础知识'
+    narrative.push('照料你的人拿出简单的图画和木牌，耐心地教你辨认几个常见的字和符号。', '你还不能独自处理大人的事务，但已经开始拥有自己的理解方式。')
+    deltas.push('精力 -2', '学会一个基础词汇')
+  } else if (actionRule === 'child-help') {
+    next.player.stamina = Math.max(0, next.player.stamina - 4)
+    next.player.reputation += 1
+    next.world.currentFocus = '家里的人开始信任你的帮忙'
+    narrative.push('你在住处帮忙收拾轻便的东西，把能拿动的小物件送到该去的位置。', '事情并不难，却让身边的人第一次认真夸了你一句。')
+    deltas.push('精力 -4', '声望 +1')
+  } else if (actionRule === 'teen-study') {
+    next.player.stamina = Math.max(0, next.player.stamina - 4)
+    next.knownFacts = [...new Set([...next.knownFacts, '你为将来的学习方向做了初步记录'])]
+    next.world.currentFocus = '比较不同的学习方向'
+    narrative.push('你把一整个下午交给书页和练习，终于看出几条道路各自需要付出什么。', '答案还没有确定，但你已经知道下一次该向谁请教。')
+    deltas.push('精力 -4', '新增学习方向记录')
+  } else if (actionRule === 'teen-apprentice') {
+    next.player.stamina = Math.max(0, next.player.stamina - 6)
+    next.player.reputation += 1
+    next.world.currentFocus = '寻找一位愿意教你的师傅'
+    narrative.push('你在住处附近打听学徒机会，先从观察工具和记住规矩开始。', '对方没有立刻收下你，但愿意在下次见面时再听听你的想法。')
+    deltas.push('精力 -6', '声望 +1', '留下学徒机会')
+  } else if (actionRule === 'teen-explore') {
+    outcome = 'partial'
+    next.player.stamina = Math.max(0, next.player.stamina - 8)
+    next.world.currentFocus = '熟悉生活圈边缘的安全路线'
+    next.knownFacts = [...new Set([...next.knownFacts, '你记住了生活圈边缘的一条安全路线'])]
+    narrative.push('你只沿着熟悉生活圈的边缘走了一段，没有贸然进入危险区域。', '回程时你记住了一条更稳妥的小路，也意识到真正的远行还需要准备。')
+    deltas.push('精力 -8', '获得安全路线', '仍有未探索区域')
+  } else if (actionRule === 'elder-rest') {
+    next.player.stamina = Math.min(100, next.player.stamina + 4)
+    next.player.health = Math.min(100, next.player.health + 1)
+    next.world.currentFocus = '把今天的节奏放慢一些'
+    narrative.push('你把窗帘拉开，让房间通风，然后按自己的节奏喝完一杯热饮。', '慢下来并不等于停滞，身体提醒你明天仍然可以继续。')
+    deltas.push('精力 +4', '状态 +1')
+  } else if (actionRule === 'elder-teach') {
+    next.player.stamina = Math.max(0, next.player.stamina - 2)
+    next.player.reputation += 1
+    next.world.currentFocus = '把经验交给愿意倾听的人'
+    narrative.push('有人来向你请教一件并不复杂、却很容易做错的事。你没有替对方完成，而是把自己的判断过程讲了一遍。', '经验只有被传下去，才不会随着时间一起消失。')
+    deltas.push('精力 -2', '声望 +1')
+  } else if (actionRule === 'elder-walk') {
+    next.player.stamina = Math.max(0, next.player.stamina - 5)
+    next.world.currentFocus = '沿着熟悉的路看看世界'
+    narrative.push('你沿着熟悉的街道走了一圈，和几个认识的人点头问候。', '街道没有改变太多，但你发现一处细小的变化，值得下次再来确认。')
+    deltas.push('精力 -5', '发现一处环境变化')
+  } else {
+    return null
+  }
+  return { outcome, narrative, deltas }
+}
+
 export function resolveAction(state: GameState, input: string, script: ScriptPackage): ActionResult {
   const cleanInput = input.trim()
   if (!cleanInput) return { outcome: 'refused', title: '还没有行动', narrative: ['先写下你想做的事，世界才知道该如何回应。'], feedback: '请输入一个具体行动。', timeLabel: '未推进时间', deltas: [], state }
@@ -136,9 +218,15 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   if (typeof match !== 'object' || !match) {
     if (typeof match === 'string') {
       const rule = script.rules?.[match]
+      if (rule && !isAgeAllowed(rule, state, script)) {
+        return { outcome: 'refused', title: '还不到合适的年龄', narrative: [blockedAgeMessage(getAgeStageForAge(script, state.player.age))], feedback: rule.blockedMessage ?? '先选择当前年龄阶段可以完成的行动。', timeLabel: '未推进时间', deltas: ['年龄阶段不满足'], state }
+      }
       if (rule?.allowedMapIds?.length && state.world.mapId && !rule.allowedMapIds.includes(state.world.mapId)) {
         return { outcome: 'refused', title: '这项生活不属于当前地区', narrative: ['你知道这件事，但它属于另一个地区的生活方式。'], feedback: rule.blockedMessage ?? '先选择合适的地图，或换一个符合当前地区的行动。', timeLabel: '未推进时间', deltas: ['地图条件不满足'], state }
       }
+    }
+    if (getAgeStageForAge(script, state.player.age) !== 'adult') {
+      return { outcome: 'refused', title: '先从当前年龄能做的事开始', narrative: [blockedAgeMessage(getAgeStageForAge(script, state.player.age)), '这次自由描述没有对应到已验证的年龄行动，因此没有推进时间，也没有改变状态。'], feedback: '请选择当前年龄阶段的行动入口；等规则确认后，AI 才会继续扩展自由行动。', timeLabel: '未推进时间', deltas: ['年龄阶段未验证'], state }
     }
     return genericOutcome(state, cleanInput, script)
   }
@@ -146,6 +234,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   const next = cloneState(state)
   const actionRule = match.ruleId ?? match.id
   const rule = script.rules?.[actionRule]
+  if (!isAgeAllowed(rule, state, script)) return { outcome: 'refused', title: '还不到合适的年龄', narrative: [blockedAgeMessage(getAgeStageForAge(script, state.player.age))], feedback: rule?.blockedMessage ?? '先选择当前年龄阶段可以完成的行动。', timeLabel: '未推进时间', deltas: ['年龄阶段不满足'], state }
   if (rule?.allowedMapIds?.length && state.world.mapId && !rule.allowedMapIds.includes(state.world.mapId)) return { outcome: 'refused', title: '这项生活不属于当前地区', narrative: [`“${match.title}”属于另一个地区的生活方式。`], feedback: rule.blockedMessage ?? '先选择合适的地图，或换一个符合当前地区的行动。', timeLabel: '未推进时间', deltas: ['地图条件不满足'], state }
   if (rule?.allowedLocations?.length && !rule.allowedLocations.some((location) => next.world.location.includes(location))) return { outcome: 'refused', title: '现在不在合适的地方', narrative: [`你看了看周围，这里不是“${match.title}”适合发生的地方。`], feedback: rule.blockedMessage ?? '先移动到合适的地点，再尝试这个行动。', timeLabel: '未推进时间', deltas: ['地点条件不满足'], state }
   const failedCondition = rule?.conditions?.find((condition) => !conditionPasses(next, condition))
@@ -164,7 +253,12 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   let title = match.title
   let narrative: string[] = []
 
-  if (actionRule === 'market') {
+  const ageResult = resolveAgeAction(next, actionRule)
+  if (ageResult) {
+    outcome = ageResult.outcome
+    narrative = ageResult.narrative
+    deltas.push(...ageResult.deltas.filter((delta) => !deltas.includes(delta)))
+  } else if (actionRule === 'market') {
     next.player.reputation += 1
     next.world.location = '晨雾镇 · 晨雾集市'
     next.world.currentFocus = '集市里有人在谈论旧桥的修缮'
@@ -245,7 +339,56 @@ export function buildInitialState(script: ScriptPackage, mapId?: string): GameSt
     next.world.mapId = next.world.mapId ?? script.world.startingMapId
     next.world.narrative = [...script.world.opening]
   }
+  next.player.ageStage = getAgeStageForAge(script, next.player.age)
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
+  return next
+}
+
+export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {}): GameState {
+  const base = buildInitialState(script, setup.mapId)
+  const selectedMap = script.maps?.find((map) => map.id === base.world.mapId)
+  const requestedStage = setup.ageStage ?? setup.player?.ageStage ?? getAgeStageForAge(script, setup.player?.age ?? 18)
+  const hasExplicitAge = typeof setup.player?.age === 'number' && Number.isFinite(setup.player.age)
+  const stage = hasExplicitAge ? getAgeStageForAge(script, setup.player?.age ?? 18) : requestedStage as AgeStage
+  const profile = getAgeStageProfile(script, stage)
+  const requestedAge = hasExplicitAge ? setup.player?.age ?? 18 : (stage === 'adult' ? 18 : getAgeStageDefinition(script, stage).minAge)
+  const age = clampAgeToStage(script, Number(requestedAge), stage)
+  const options = getAgeOptions(script, selectedMap, stage)
+  const requestedRole = setup.player?.role
+  const requestedProfession = setup.player?.profession
+  const player = {
+    ...base.player,
+    name: setup.player?.name?.trim() || '未命名人生',
+    age,
+    ageStage: stage,
+    role: requestedRole && options.roles.includes(requestedRole) ? requestedRole : options.roles[0] ?? base.player.role,
+    profession: requestedProfession && options.professions.includes(requestedProfession) ? requestedProfession : options.professions[0] ?? base.player.profession,
+    mood: setup.player?.mood ?? profile.startingMood ?? '刚刚开始',
+    health: profile.startingHealth ?? 100,
+    stamina: profile.startingStamina ?? 80,
+    money: profile.startingMoney ?? 0,
+    reputation: profile.startingReputation ?? 0,
+    traits: [...(setup.player?.traits ?? [])],
+  }
+  const next: GameState = {
+    ...base,
+    player,
+    world: {
+      ...base.world,
+      day: 1,
+      time: '清晨 · 07:00',
+      narrative: [...(selectedMap?.opening ?? script.world.opening)],
+      currentFocus: '决定今天从哪里开始',
+      publicNews: [...base.world.publicNews],
+    },
+    history: [],
+    inventory: [...(profile.startingInventory ?? [])],
+    knownFacts: [],
+    scheduledEvents: [],
+    memory: { summary: '', compressedThroughTurn: 0, compressedEventIds: [], pinnedFacts: [], openThreads: [] } satisfies MemoryState,
+    turn: 0,
+  }
+  next.suggestedActions = generateSuggestedActions(next, script)
   return next
 }

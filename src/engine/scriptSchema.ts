@@ -6,6 +6,7 @@ const isRecord = (value: unknown): value is RecordLike => Boolean(value && typeo
 const isString = (value: unknown): value is string => typeof value === 'string'
 const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const hasKeys = (value: RecordLike, keys: string[]) => keys.every((key) => key in value)
+const AGE_STAGES = ['baby', 'child', 'teen', 'adult', 'elder']
 
 function validateAction(input: unknown, path: string, errors: string[]) {
   if (!isRecord(input) || !hasKeys(input, ['id', 'title', 'description', 'location', 'timeCost', 'moneyCost', 'staminaCost', 'risk', 'tone'])) {
@@ -76,8 +77,11 @@ export function validateScriptPackage(input: unknown): { valid: boolean; errors:
   if (input.rules !== undefined && isRecord(input.rules)) {
     Object.values(input.rules).forEach((rule, index) => {
       if (isRecord(rule) && rule.allowedMapIds !== undefined && (!Array.isArray(rule.allowedMapIds) || !rule.allowedMapIds.every(isString))) errors.push(`rules[${index}].allowedMapIds 必须是字符串数组`)
+      if (isRecord(rule) && rule.allowedAgeStages !== undefined && (!Array.isArray(rule.allowedAgeStages) || !rule.allowedAgeStages.every((stage) => typeof stage === 'string' && AGE_STAGES.includes(stage)))) errors.push(`rules[${index}].allowedAgeStages 必须是受支持的年龄阶段数组`)
     })
   }
+  if (input.ageStageActions !== undefined && (!isRecord(input.ageStageActions) || Object.entries(input.ageStageActions).some(([stage, actions]) => !AGE_STAGES.includes(stage) || !Array.isArray(actions)))) errors.push('ageStageActions 必须按受支持的年龄阶段提供行动数组')
+  if (isRecord(input.ageStageActions)) Object.entries(input.ageStageActions).forEach(([stage, actions]) => { if (AGE_STAGES.includes(stage) && Array.isArray(actions)) actions.forEach((action, index) => validateAction(action, `ageStageActions.${stage}[${index}]`, errors)) })
   if (input.events !== undefined && (!Array.isArray(input.events) || input.events.some((event) => !isRecord(event) || !isString(event.id) || !isNumber(event.dueTurn) || !isString(event.title) || !isString(event.body) || !Array.isArray(event.tags)))) errors.push('events 中存在格式错误的延迟事件')
   if (input.maps !== undefined && (!Array.isArray(input.maps) || input.maps.length === 0)) errors.push('maps 必须是至少包含一张地图的数组')
   if (Array.isArray(input.maps)) input.maps.forEach((map, index) => validateMap(map, index, errors))

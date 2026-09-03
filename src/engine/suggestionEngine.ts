@@ -1,4 +1,5 @@
 import type { GameState, ScriptPackage, SuggestedAction } from '../types'
+import { ageActionsForState, isAgeAllowed } from './ageRules'
 
 interface ActionCopy {
   title: string
@@ -15,6 +16,27 @@ const FALLBACK_VARIANTS: ActionCopy[] = [
 ]
 
 const LOCAL_VARIANTS: Record<string, ActionCopy[]> = {
+  'baby-care': [
+    { title: '接受照料', description: '让照料者安排喂食、擦洗和安抚，先把身体照顾好。' },
+    { title: '让熟悉的人抱一会儿', description: '在熟悉的声音和气味里安稳下来。' },
+  ],
+  'baby-observe': [
+    { title: '观察熟悉的声音', description: '在安全的住处听一听、看一看，把一个细节留在记忆里。' },
+    { title: '看窗边的光影', description: '从身边的小变化开始认识这个世界。' },
+  ],
+  'baby-rest': [
+    { title: '安稳睡一觉', description: '在照料下休息，让身体和精力慢慢恢复。' },
+    { title: '在温暖里休息', description: '把今天剩下的力气交给睡眠和照料。' },
+  ],
+  'child-play': [{ title: '在住处附近玩耍', description: '只在熟悉又安全的地方玩一会儿，记住附近的路。' }],
+  'child-learn': [{ title: '学习基础知识', description: '跟着照料者认字、认路或认识生活中常见的东西。' }],
+  'child-help': [{ title: '帮家里做一点小事', description: '完成自己拿得动、做得到的整理和递送。' }],
+  'teen-study': [{ title: '整理学习方向', description: '花时间比较学习、手艺和未来工作需要的准备。' }],
+  'teen-apprentice': [{ title: '打听学徒机会', description: '在生活圈附近询问是否有人愿意教你一门手艺。' }],
+  'teen-explore': [{ title: '探索生活圈边缘', description: '只沿安全路线走一段，不进入当前年龄不适合的危险区域。' }],
+  'elder-rest': [{ title: '放慢节奏休息', description: '照顾身体，把今天的安排调整得更从容。' }],
+  'elder-teach': [{ title: '传授一段经验', description: '把自己熟悉的经验讲给愿意倾听的人。' }],
+  'elder-walk': [{ title: '沿熟悉街道散步', description: '沿着熟悉的路线走一圈，看看环境有什么变化。' }],
   market: [
     { title: '去集市问问旧桥', description: '找熟悉的摊贩聊聊旧桥修缮，看看运输会不会受影响。' },
     { title: '在布商摊位看看', description: '从河谷布商那里听听路上的消息，再决定要不要买些材料。' },
@@ -68,10 +90,11 @@ function copyFor(action: SuggestedAction, variantIndex: number): ActionCopy {
 export function generateSuggestedActions(state: GameState, script: ScriptPackage): SuggestedAction[] {
   const mapSeed = script.maps?.find((map) => map.id === state.world.mapId)?.seedState
   const sourceState = mapSeed ?? script.world.seedState
-  const source = [...new Map(sourceState.suggestedActions.map((action) => [action.ruleId ?? action.id, action])).values()]
+  const ageActions = ageActionsForState(script, state)
+  const source = [...new Map([...ageActions, ...sourceState.suggestedActions].map((action) => [action.ruleId ?? action.id, action])).values()]
     .filter((action) => {
       const rule = script.rules?.[action.ruleId ?? action.id]
-      return !rule?.allowedMapIds?.length || !state.world.mapId || rule.allowedMapIds.includes(state.world.mapId)
+      return isAgeAllowed(rule, state, script) && (!rule?.allowedMapIds?.length || !state.world.mapId || rule.allowedMapIds.includes(state.world.mapId))
     })
   if (!source.length) return []
   const latestAction = state.history.find((event) => event.ruleId || (event.actionId && !event.actionId.startsWith('freeform:')))

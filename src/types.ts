@@ -6,6 +6,25 @@ export type ActionGenerationMode = 'guided' | 'varied' | 'freeform'
 
 export type AgeStage = 'baby' | 'child' | 'teen' | 'adult' | 'elder'
 
+export interface AgeStageDefinition {
+  id: AgeStage
+  label: string
+  minAge: number
+  maxAge: number
+  description: string
+}
+
+export interface AgeStageProfile {
+  roles?: string[]
+  professions?: string[]
+  startingHealth?: number
+  startingStamina?: number
+  startingMoney?: number
+  startingReputation?: number
+  startingInventory?: string[]
+  startingMood?: string
+}
+
 export type UiThemeId = 'paper-journal' | 'twilight-library' | 'field-notes' | 'harbor-postcard'
 
 export type ConditionOperator = 'min' | 'max' | 'equals' | 'includes' | 'not-includes'
@@ -22,8 +41,21 @@ export interface ActionRule {
   conditions?: RuleCondition[]
   allowedLocations?: string[]
   allowedMapIds?: string[]
+  allowedAgeStages?: AgeStage[]
   blockedMessage?: string
   delayedEventId?: string
+}
+
+export type IncidentKind = 'opportunity' | 'complication' | 'encounter' | 'weather'
+
+export interface IncidentCandidate {
+  title: string
+  body: string
+  kind: IncidentKind
+  tags: string[]
+  dueInTurns?: number
+  npcId?: string
+  relationshipDelta?: number
 }
 
 export interface ScheduledEvent {
@@ -42,7 +74,8 @@ export interface CharacterCreationConfig {
   roles: string[]
   professions: string[]
   traits: string[]
-  ageStages?: Array<{ id: AgeStage; label: string; minAge: number; maxAge: number; description: string }>
+  ageStages?: AgeStageDefinition[]
+  ageStageProfiles?: Partial<Record<AgeStage, AgeStageProfile>>
 }
 
 export interface ThemeTokens {
@@ -58,6 +91,7 @@ export interface ThemeTokens {
 export interface PlayerState {
   name: string
   age: number
+  ageStage?: AgeStage
   role: string
   profession: string
   mood: string
@@ -171,9 +205,15 @@ export interface ScriptPackage {
   }
   theme: ThemeTokens
   characterCreation?: CharacterCreationConfig
+  ageStageActions?: Partial<Record<AgeStage, SuggestedAction[]>>
   maps?: MapDefinition[]
   rules?: Record<string, ActionRule>
   events?: ScheduledEvent[]
+  incidentPolicy?: {
+    enabled: boolean
+    chance: number
+    maxScheduled?: number
+  }
   world: {
     startingLocation: string
     startingMapId?: string
@@ -208,6 +248,13 @@ export interface ProviderConfig {
   endpoint: string
   apiKey: string
   model: string
+}
+
+export interface NewLifeSetup {
+  scriptId?: string
+  mapId?: string
+  ageStage?: AgeStage
+  player?: Partial<GameState['player']>
 }
 
 export interface ActionResult {

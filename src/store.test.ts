@@ -14,7 +14,9 @@ describe('game store', () => {
     const current = useGameStore.getState()
     expect(current.activeNav).toBe('play')
     expect(current.activeScriptId).toBe('western-world')
-    expect(current.sessions['western-world::default'].state.turn).toBe(getScript('western-world').world.seedState.turn)
+    expect(current.sessions['western-world::default'].state.turn).toBe(0)
+    expect(current.sessions['western-world::default'].state.world.day).toBe(1)
+    expect(current.sessions['western-world::default'].state.history).toHaveLength(0)
     expect(current.lastAction).toBeNull()
   })
 
@@ -40,6 +42,25 @@ describe('game store', () => {
     useGameStore.getState().updatePlayer({ profession: '木匠学徒' })
     const edited = useGameStore.getState().sessions[useGameStore.getState().activeLifeId]
     expect(harbor?.availableProfessions).toContain(edited.state.player.profession)
+  })
+
+  it('starts a baby life with a clean calendar, baseline resources, and age-safe actions', () => {
+    vi.stubGlobal('window', {})
+    useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', activeNav: 'character' })
+    useGameStore.getState().startNewLife({ mapId: 'tide-harbor', ageStage: 'baby', player: { name: '小小旅人', age: 0 } })
+
+    const session = useGameStore.getState().sessions[useGameStore.getState().activeLifeId]
+    expect(session.state.player.age).toBe(0)
+    expect(session.state.player.ageStage).toBe('baby')
+    expect(session.state.player.profession).toBe('尚未拥有职业')
+    expect(session.state.player.health).toBe(70)
+    expect(session.state.player.stamina).toBe(25)
+    expect(session.state.world.day).toBe(1)
+    expect(session.state.world.time).toBe('清晨 · 07:00')
+    expect(session.state.history).toHaveLength(0)
+    expect(session.state.inventory).toHaveLength(0)
+    expect(session.state.suggestedActions.every((action) => action.ruleId?.startsWith('baby-'))).toBe(true)
+    expect(session.state.suggestedActions.some((action) => action.title.includes('码头') || action.title.includes('关店'))).toBe(false)
   })
 
   it('switches UI themes without changing the active life', () => {
@@ -85,6 +106,23 @@ describe('game store', () => {
     expect(current.sessions[current.activeLifeId].snapshots?.every((snapshot) => snapshot.state.world.mapId === 'mist-town')).toBe(true)
   })
 
+  it('ignores malformed snapshots instead of crashing import', () => {
+    vi.stubGlobal('window', {})
+    const validState = structuredClone(getScript('dawnmere').world.seedState)
+    useGameStore.getState().importRuntime({
+      format: 'ai-life-world-save',
+      version: 2,
+      activeScriptId: 'dawnmere',
+      sessions: { dawnmere: { scriptId: 'dawnmere', state: validState, snapshots: [{ turn: 1, state: { player: { age: 0 }, world: {}, turn: 1 } }] } },
+      providerConfig: { endpoint: '', apiKey: '', model: '' },
+    })
+
+    const current = useGameStore.getState()
+    const session = current.sessions[current.activeLifeId]
+    expect(session.snapshots).toHaveLength(1)
+    expect(session.state.player.ageStage).toBe('adult')
+  })
+
   it('does not write an AI result into a life changed while the request was pending', async () => {
     vi.stubGlobal('window', {})
     let release: (response: Response) => void = () => undefined
@@ -102,5 +140,25 @@ describe('game store', () => {
     expect(current.activeLifeId).toBe(changedLifeId)
     expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
     expect(current.lastAction).toBeNull()
+  })
+
+  it('queues a validated AI incident without letting the model write game state', async () => {
+    vi.stubGlobal('window', {})
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0)
+    vi.stubGlobal('fetch', vi.fn(async (_input: unknown, init?: { body?: unknown }) => {
+      const payload = JSON.parse(String(init?.body)) as { messages?: Array<{ content?: string }> }
+      const system = payload.messages?.[0]?.content ?? ''
+      if (system.includes('突发事件候选助手')) return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: { title: '米拉送来一封短笺', body: '米拉让邻居捎来一封短笺，说她在集市听见了新的桥讯。', kind: 'encounter', tags: ['人物'], dueInTurns: 1, npcId: 'mira', relationshipDelta: 1 } }) } }] }), { status: 200 })
+      if (system.includes('行动候选助手')) return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [] }) } }] }), { status: 200 })
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['第一段', '第二段'] }) } }] }), { status: 200 })
+    }))
+    useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', activeNav: 'play', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'test' } })
+    useGameStore.getState().startNewLife({ ageStage: 'adult', player: { name: '突发事件测试' } })
+    await useGameStore.getState().runAction('整理工具和窗边')
+    randomSpy.mockRestore()
+
+    const session = useGameStore.getState().sessions[useGameStore.getState().activeLifeId]
+    expect(session.state.scheduledEvents?.some((event) => event.title === '米拉送来一封短笺')).toBe(true)
+    expect(session.state.player.money).toBe(20)
   })
 })

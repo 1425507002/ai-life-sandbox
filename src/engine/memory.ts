@@ -58,7 +58,7 @@ export interface MemoryPacket {
     location: string
     region: string
     currentFocus: string
-    player: Pick<GameState['player'], 'name' | 'age' | 'role' | 'profession' | 'mood' | 'health' | 'stamina' | 'money' | 'reputation' | 'traits'>
+    player: Pick<GameState['player'], 'name' | 'age' | 'ageStage' | 'role' | 'profession' | 'mood' | 'health' | 'stamina' | 'money' | 'reputation' | 'traits'>
     inventory: string[]
     npcs: Array<Pick<GameState['npcs'][number], 'id' | 'name' | 'role' | 'relationship' | 'lastInteraction' | 'status'>>
     locations: Array<Pick<GameState['locations'][number], 'id' | 'name' | 'kind' | 'available'>>
@@ -71,6 +71,7 @@ export function buildMemoryPacket(state: GameState): MemoryPacket {
   const player = {
     name: clip(state.player.name, 80),
     age: state.player.age,
+    ageStage: state.player.ageStage,
     role: clip(state.player.role, 80),
     profession: clip(state.player.profession, 100),
     mood: clip(state.player.mood, 120),
