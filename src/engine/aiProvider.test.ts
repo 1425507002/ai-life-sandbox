@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkProviderConnection, generateActionCandidates, generateIncident, generateNarration } from './aiProvider'
-import { buildInitialState } from './actionEngine'
+import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { getScript } from '../data/scripts'
 
 const provider = { endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', apiKey: 'test-key-only', model: 'glm-4.7-flash' }
@@ -76,6 +76,19 @@ describe('checkProviderConnection', () => {
     expect(result?.npcId).toBe('mira')
     const request = vi.mocked(fetch).mock.calls[0]?.[1]
     expect(String(request?.body)).not.toContain('"player":{"name"')
+  })
+
+  it('gives incident generation only opaque IDs for undiscovered locations', async () => {
+    const state = buildNewLifeState(getScript('western-world'), { mapId: 'mist-town', ageStage: 'adult', player: { name: '地图白名单测试' } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: null }) } }] }), { status: 200 })))
+
+    await generateIncident(provider, { state, script: getScript('western-world') })
+    const request = vi.mocked(fetch).mock.calls[0]?.[1]
+    const body = String(request?.body)
+
+    expect(body).toContain('discoverableLocationIds')
+    expect(body).toContain('market')
+    expect(body).not.toContain('晨雾集市')
   })
 
   it('keeps local action costs authoritative over AI copy', async () => {
