@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInitialState } from './actionEngine'
+import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { buildMemoryPacket, compressMemory } from './memory'
 import { getScript } from '../data/scripts'
 
@@ -66,5 +66,13 @@ describe('long-term memory context', () => {
 
     expect(first.summary).toBe(second.summary)
     expect(second.compressedEventIds).toEqual(first.compressedEventIds)
+  })
+
+  it('does not leak undiscovered places or strangers into the AI context', () => {
+    const state = buildNewLifeState(getScript('western-world'), { mapId: 'mist-town', ageStage: 'adult', player: { name: '上下文边界测试' } })
+    const packet = buildMemoryPacket(state)
+
+    expect(packet.current.locations.map((location) => location.id)).toEqual(['home'])
+    expect(packet.current.npcs).toHaveLength(0)
   })
 })

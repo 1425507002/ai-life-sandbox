@@ -94,8 +94,8 @@ export function buildMemoryPacket(state: GameState): MemoryPacket {
       currentFocus: clip(state.world.currentFocus),
       player,
       inventory: state.inventory.slice(-INVENTORY_LIMIT).map((item) => clip(item, 120)),
-      npcs: state.npcs.slice(0, NPC_LIMIT).map(({ id, name, role, relationship, lastInteraction, status }) => ({ id: clip(id, 80), name: clip(name, 80), role: clip(role, 100), relationship, lastInteraction: clip(lastInteraction), status: clip(status) })),
-      locations: state.locations.slice(0, LOCATION_LIMIT).map(({ id, name, kind, available }) => ({ id: clip(id, 80), name: clip(name, 100), kind: clip(kind, 80), available })),
+      npcs: state.npcs.filter((npc) => npc.met !== false).slice(0, NPC_LIMIT).map(({ id, name, role, relationship, lastInteraction, status }) => ({ id: clip(id, 80), name: clip(name, 80), role: clip(role, 100), relationship, lastInteraction: clip(lastInteraction), status: clip(status) })),
+      locations: state.locations.filter((location) => location.discovered !== false).slice(0, LOCATION_LIMIT).map(({ id, name, kind, available }) => ({ id: clip(id, 80), name: clip(name, 100), kind: clip(kind, 80), available })),
     },
     recentHistory: state.history.slice(0, RECENT_HISTORY_LIMIT).map(({ id, turn, date, title, body, outcome, tags }) => ({ id: clip(id, 80), turn, date: clip(date, 80), title: clip(title, 100), body: clip(body, HISTORY_BODY_LIMIT), outcome, tags: tags.slice(0, 8).map((tag) => clip(tag, 60)) })),
   }

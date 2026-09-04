@@ -12,6 +12,7 @@ export function validateIncidentCandidate(candidate: unknown, state: GameState):
   if (item.dueInTurns !== undefined && (!Number.isInteger(item.dueInTurns) || item.dueInTurns < 1 || item.dueInTurns > 3)) return false
   if (item.npcId !== undefined && (!state.npcs.some((npc) => npc.id === item.npcId))) return false
   if (item.relationshipDelta !== undefined && (!Number.isInteger(item.relationshipDelta) || item.relationshipDelta < -2 || item.relationshipDelta > 2)) return false
+  if (item.revealsLocationId !== undefined && !state.locations.some((location) => location.id === item.revealsLocationId)) return false
   return true
 }
 
@@ -26,6 +27,7 @@ export function validateScheduledEvent(event: unknown, state: GameState): event 
   if (item.fact !== undefined && (typeof item.fact !== 'string' || item.fact.length > 200)) return false
   if (item.npcId !== undefined && !state.npcs.some((npc) => npc.id === item.npcId)) return false
   if (item.relationshipDelta !== undefined && (!Number.isInteger(item.relationshipDelta) || item.relationshipDelta < -2 || item.relationshipDelta > 2)) return false
+  if (item.revealsLocationId !== undefined && !state.locations.some((location) => location.id === item.revealsLocationId)) return false
   return true
 }
 
@@ -51,6 +53,7 @@ export function queueIncidentCandidate(state: GameState, candidate: unknown, max
     tags: [...new Set([...item.tags.map((tag) => tag.trim()).filter(Boolean), 'AI候选'])].slice(0, 5),
     ...(item.npcId ? { npcId: item.npcId } : {}),
     ...(item.relationshipDelta ? { relationshipDelta: item.relationshipDelta } : {}),
+    ...(item.revealsLocationId ? { revealsLocationId: item.revealsLocationId } : {}),
   }
   return { state: { ...structuredClone(state), scheduledEvents: [...scheduled, event] }, candidate: item }
 }

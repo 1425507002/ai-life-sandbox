@@ -1,4 +1,4 @@
-import type { ScriptPackage } from '../types'
+import type { MapDiscoveryPolicy, ScriptPackage } from '../types'
 
 const dawnmere: ScriptPackage = {
   manifest: {
@@ -21,14 +21,14 @@ const dawnmere: ScriptPackage = {
   },
   characterCreation: { enabled: true, roles: ['普通居民', '外来旅人', '工坊学徒'], professions: ['木匠学徒', '面包房帮工', '自由手艺人'], traits: ['耐心', '手巧', '观察敏锐', '不喜欢欠人情', '对远方好奇'] },
   rules: {
-    forest: { id: 'forest', conditions: [{ path: 'player.health', operator: 'min', value: 10, message: '你的身体状态还不错，但至少要保留 10 点状态才能进入雾林。' }], blockedMessage: '先休息或处理伤口，再去雾林。', delayedEventId: 'dawnmere-forest-return' },
-    market: { id: 'market', delayedEventId: 'dawnmere-market-rumor' },
-    smith: { id: 'smith', delayedEventId: 'dawnmere-smith-trial' },
+    forest: { id: 'forest', conditions: [{ path: 'player.health', operator: 'min', value: 10, message: '你的身体状态还不错，但至少要保留 10 点状态才能进入雾林。' }], blockedMessage: '先休息或处理伤口，再去雾林。', delayedEventId: 'dawnmere-forest-return', revealsLocationId: 'northwood' },
+    market: { id: 'market', delayedEventId: 'dawnmere-market-rumor', revealsLocationId: 'market' },
+    smith: { id: 'smith', delayedEventId: 'dawnmere-smith-trial', revealsLocationId: 'forge' },
   },
   events: [
-    { id: 'dawnmere-market-rumor', dueTurn: 2, title: '米拉带来一条新消息', body: '米拉在你离开集市后听见了更具体的消息：旧桥修缮可能会提前开始。', tags: ['人物', '线索'], fact: '旧桥修缮可能会提前开始', npcId: 'mira', relationshipDelta: 1 },
-    { id: 'dawnmere-smith-trial', dueTurn: 1, title: '奥伦留了一句口信', body: '奥伦让人捎来口信：如果你明早还愿意来，试工可以从整理木柄开始。', tags: ['工作', '安排'], fact: '奥伦的试工从整理木柄开始', npcId: 'oren', relationshipDelta: 2 },
-    { id: 'dawnmere-forest-return', dueTurn: 2, title: '药草师认出了你的药草', body: '塞拉看过你带回的药草后，指出其中一株可以换成更好的止痛草。', tags: ['探索', '人物'], fact: '塞拉愿意帮你辨认药草', npcId: 'sela', relationshipDelta: 1 },
+    { id: 'dawnmere-market-rumor', dueTurn: 2, title: '米拉带来一条新消息', body: '米拉在你离开集市后听见了更具体的消息：旧桥修缮可能会提前开始。', tags: ['人物', '线索'], fact: '旧桥修缮可能会提前开始', npcId: 'mira', relationshipDelta: 1, revealsLocationId: 'market' },
+    { id: 'dawnmere-smith-trial', dueTurn: 1, title: '奥伦留了一句口信', body: '奥伦让人捎来口信：如果你明早还愿意来，试工可以从整理木柄开始。', tags: ['工作', '安排'], fact: '奥伦的试工从整理木柄开始', npcId: 'oren', relationshipDelta: 2, revealsLocationId: 'forge' },
+    { id: 'dawnmere-forest-return', dueTurn: 2, title: '药草师认出了你的药草', body: '塞拉看过你带回的药草后，指出其中一株可以换成更好的止痛草。', tags: ['探索', '人物'], fact: '塞拉愿意帮你辨认药草', npcId: 'sela', relationshipDelta: 1, revealsLocationId: 'northwood' },
   ],
   world: {
     startingLocation: '晨雾镇 · 住处',
@@ -104,9 +104,9 @@ const tideglass: ScriptPackage = {
     dock: { id: 'dock', delayedEventId: 'tideglass-dock-work' },
   },
   events: [
-    { id: 'tideglass-tavern-rumor', dueTurn: 1, title: '水手又补上半句传闻', body: '昨天窗边的水手在你离开后又想起一件事：那艘旧货船的船尾有新换过的漆。', tags: ['酒馆', '传闻'], fact: '陌生货船船尾有新换过的漆' },
-    { id: 'tideglass-lighthouse-key', dueTurn: 2, title: '艾尔娜找到了半截钥匙', body: '艾尔娜在灯塔外的碎石里找到了半截旧钥匙，另一半可能还在外港。', tags: ['灯塔', '线索'], fact: '灯塔钥匙只找到半截', npcId: 'elna', relationshipDelta: 2 },
-    { id: 'tideglass-dock-work', dueTurn: 1, title: '乔恩替你留了一个位置', body: '乔恩把明早的短工名单压在仓棚门后，特意给你留了一个位置。', tags: ['码头', '工作'], fact: '明早西堤仓棚有一份短工', npcId: 'jon', relationshipDelta: 1 },
+    { id: 'tideglass-tavern-rumor', dueTurn: 1, title: '水手又补上半句传闻', body: '昨天窗边的水手在你离开后又想起一件事：那艘旧货船的船尾有新换过的漆。', tags: ['酒馆', '传闻'], fact: '陌生货船船尾有新换过的漆', revealsLocationId: 'tavern' },
+    { id: 'tideglass-lighthouse-key', dueTurn: 2, title: '艾尔娜找到了半截钥匙', body: '艾尔娜在灯塔外的碎石里找到了半截旧钥匙，另一半可能还在外港。', tags: ['灯塔', '线索'], fact: '灯塔钥匙只找到半截', npcId: 'elna', relationshipDelta: 2, revealsLocationId: 'lighthouse' },
+    { id: 'tideglass-dock-work', dueTurn: 1, title: '乔恩替你留了一个位置', body: '乔恩把明早的短工名单压在仓棚门后，特意给你留了一个位置。', tags: ['码头', '工作'], fact: '明早西堤仓棚有一份短工', npcId: 'jon', relationshipDelta: 1, revealsLocationId: 'dock' },
   ],
   world: {
     startingLocation: '灰潮港 · 灯塔街',
@@ -120,7 +120,8 @@ const tideglass: ScriptPackage = {
         { id: 'elna', name: '艾尔娜', role: '灯塔管理员', avatar: 'E', summary: '沉默而可靠，熟悉潮汐和所有通往外港的小路。', relationship: 6, lastInteraction: '上月替她送过一次灯油', status: '正在找钥匙', schedule: ['正在找钥匙', '擦拭灯塔的铜制护栏', '记录今晚的潮位'] },
       ],
       locations: [
-        { id: 'shop', name: '船具店', kind: '工作', description: '卖缆绳、帆布和旧航海工具的小店。', distance: '当前位置', available: true },
+        { id: 'lighthouse-street', name: '灯塔街', kind: '生活', description: '连接船具店、旧灯塔和港口内街的潮湿石板路。', distance: '当前位置', available: true },
+        { id: 'shop', name: '船具店', kind: '工作', description: '卖缆绳、帆布和旧航海工具的小店。', distance: '步行 6 分钟', available: true },
         { id: 'dock', name: '西堤码头', kind: '工作', description: '货船靠岸、搬运工等活的地方。', distance: '步行 9 分钟', available: true },
         { id: 'lighthouse', name: '旧灯塔', kind: '探索', description: '能看到外港和北侧礁群，夜里风很大。', distance: '步行 26 分钟', available: true },
         { id: 'tavern', name: '潮声酒馆', kind: '社交', description: '水手、商人和本地居民交换消息的地方。', distance: '步行 14 分钟', available: true },
@@ -164,6 +165,14 @@ const ageStageActions: ScriptPackage['ageStageActions'] = {
 
 const ageActionRules = Object.fromEntries(Object.entries(ageStageActions).flatMap(([stage, actions]) => actions.map((action) => [action.ruleId, { id: action.ruleId, allowedAgeStages: [stage], blockedMessage: '这个行动只适合当前对应的年龄阶段。' }])) )
 
+const mapDiscoveryPolicy: MapDiscoveryPolicy = {
+  initialKnownLocation: 'startingLocation',
+  allowedSources: ['birth', 'exploration', 'npc', 'rumor', 'event'],
+  maxNewLocationsPerAction: 1,
+  requireExplicitDiscovery: true,
+  aiMustNotCreateLocation: true,
+}
+
 const westernWorld: ScriptPackage = {
   manifest: {
     id: 'western-world',
@@ -199,12 +208,12 @@ const westernWorld: ScriptPackage = {
     {
       id: 'mist-town', title: '晨雾镇', subtitle: '北境边缘 · 边境小镇', description: dawnmere.manifest.description,
       region: '北境边缘', kind: '城镇', startingLocation: dawnmere.world.startingLocation, opening: dawnmere.world.opening,
-      availableRoles: dawnmere.characterCreation?.roles, availableProfessions: dawnmere.characterCreation?.professions, seedState: dawnmere.world.seedState,
+      availableRoles: dawnmere.characterCreation?.roles, availableProfessions: dawnmere.characterCreation?.professions, discoveryPolicy: mapDiscoveryPolicy, seedState: dawnmere.world.seedState,
     },
     {
       id: 'tide-harbor', title: '灰潮港', subtitle: '西海岸 · 潮汐港口', description: tideglass.manifest.description,
       region: '西海岸', kind: '港口', startingLocation: tideglass.world.startingLocation, opening: tideglass.world.opening,
-      availableRoles: tideglass.characterCreation?.roles, availableProfessions: tideglass.characterCreation?.professions, seedState: tideglass.world.seedState,
+      availableRoles: tideglass.characterCreation?.roles, availableProfessions: tideglass.characterCreation?.professions, discoveryPolicy: mapDiscoveryPolicy, seedState: tideglass.world.seedState,
     },
   ],
   rules: {
@@ -212,16 +221,17 @@ const westernWorld: ScriptPackage = {
     market: { ...dawnmere.rules?.market, id: 'market', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
     smith: { ...dawnmere.rules?.smith, id: 'smith', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
     tidy: { id: 'tidy', allowedMapIds: ['mist-town'], allowedAgeStages: ['adult'] },
-    tavern: { ...tideglass.rules?.tavern, id: 'tavern', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
-    rhea: { id: 'rhea', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
-    lighthouse: { ...tideglass.rules?.lighthouse, id: 'lighthouse', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
-    dock: { ...tideglass.rules?.dock, id: 'dock', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'] },
+    tavern: { ...tideglass.rules?.tavern, id: 'tavern', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'], revealsLocationId: 'tavern' },
+    rhea: { id: 'rhea', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'], revealsLocationId: 'shop' },
+    lighthouse: { ...tideglass.rules?.lighthouse, id: 'lighthouse', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'], revealsLocationId: 'lighthouse' },
+    dock: { ...tideglass.rules?.dock, id: 'dock', allowedMapIds: ['tide-harbor'], allowedAgeStages: ['adult'], revealsLocationId: 'dock' },
     ...ageActionRules,
   },
   incidentPolicy: { enabled: true, chance: 0.18, maxScheduled: 2 },
   events: [...(dawnmere.events ?? []), ...(tideglass.events ?? [])],
   world: {
     startingMapId: 'mist-town', startingLocation: dawnmere.world.startingLocation, opening: dawnmere.world.opening,
+    mapDiscovery: mapDiscoveryPolicy,
     seedState: { ...dawnmere.world.seedState, world: { ...dawnmere.world.seedState.world, mapId: 'mist-town' } },
   },
 }

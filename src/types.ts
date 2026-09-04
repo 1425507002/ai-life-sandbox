@@ -46,6 +46,7 @@ export interface ActionRule {
   allowedAgeStages?: AgeStage[]
   blockedMessage?: string
   delayedEventId?: string
+  revealsLocationId?: string
 }
 
 export type IncidentKind = 'opportunity' | 'complication' | 'encounter' | 'weather'
@@ -58,6 +59,7 @@ export interface IncidentCandidate {
   dueInTurns?: number
   npcId?: string
   relationshipDelta?: number
+  revealsLocationId?: string
 }
 
 export interface ScheduledEvent {
@@ -69,6 +71,7 @@ export interface ScheduledEvent {
   fact?: string
   npcId?: string
   relationshipDelta?: number
+  revealsLocationId?: string
 }
 
 export interface CharacterCreationConfig {
@@ -126,6 +129,9 @@ export interface LocationState {
   description: string
   distance: string
   available: boolean
+  discovered?: boolean
+  discoverySource?: 'birth' | 'exploration' | 'npc' | 'rumor' | 'event'
+  discoveredAtTurn?: number
 }
 
 export interface SuggestedAction {
@@ -224,7 +230,16 @@ export interface ScriptPackage {
     startingMapId?: string
     opening: string[]
     seedState: GameState
+    mapDiscovery?: MapDiscoveryPolicy
   }
+}
+
+export interface MapDiscoveryPolicy {
+  initialKnownLocation: 'startingLocation'
+  allowedSources: Array<'birth' | 'exploration' | 'npc' | 'rumor' | 'event'>
+  maxNewLocationsPerAction: number
+  requireExplicitDiscovery: boolean
+  aiMustNotCreateLocation: boolean
 }
 
 export interface MapDefinition {
@@ -239,6 +254,7 @@ export interface MapDefinition {
   availableRoles?: string[]
   availableProfessions?: string[]
   seedState: GameState
+  discoveryPolicy?: MapDiscoveryPolicy
 }
 
 export interface GameSession {

@@ -34,6 +34,12 @@ function validateState(input: unknown, errors: string[]) {
   if (!isNumber(world.day) || !isString(world.time) || !isString(world.season) || !isString(world.weather) || !isString(world.location) || !isString(world.region) || !isString(world.atmosphere) || !isString(world.headline) || !isString(world.currentFocus)) errors.push('world.seedState.world 基础字段格式错误')
   if (!Array.isArray(world.narrative) || !world.narrative.every(isString) || !Array.isArray(world.publicNews) || !world.publicNews.every(isString)) errors.push('world.seedState.world 文本数组格式错误')
   if (!Array.isArray(input.npcs) || !Array.isArray(input.locations) || !Array.isArray(input.suggestedActions) || !Array.isArray(input.history) || !Array.isArray(input.inventory) || !Array.isArray(input.knownFacts) || !isNumber(input.turn)) errors.push('world.seedState 缺少有效的集合字段')
+  if (Array.isArray(input.locations)) input.locations.forEach((location, index) => {
+    if (!isRecord(location)) return
+    if (location.discovered !== undefined && typeof location.discovered !== 'boolean') errors.push(`world.seedState.locations[${index}].discovered 必须是布尔值`)
+    if (location.discoverySource !== undefined && !['birth', 'exploration', 'npc', 'rumor', 'event'].includes(String(location.discoverySource))) errors.push(`world.seedState.locations[${index}].discoverySource 不是受支持的来源`)
+    if (location.discoveredAtTurn !== undefined && !isNumber(location.discoveredAtTurn)) errors.push(`world.seedState.locations[${index}].discoveredAtTurn 必须是数字`)
+  })
   if (Array.isArray(input.suggestedActions)) input.suggestedActions.forEach((action, index) => validateAction(action, `world.seedState.suggestedActions[${index}]`, errors))
 }
 
@@ -47,8 +53,17 @@ function validateMap(input: unknown, index: number, errors: string[]) {
   if (!Array.isArray(input.opening) || !input.opening.every(isString)) errors.push(`${path}.opening 必须是字符串数组`)
   if (input.availableRoles !== undefined && (!Array.isArray(input.availableRoles) || !input.availableRoles.every(isString))) errors.push(`${path}.availableRoles 必须是字符串数组`)
   if (input.availableProfessions !== undefined && (!Array.isArray(input.availableProfessions) || !input.availableProfessions.every(isString))) errors.push(`${path}.availableProfessions 必须是字符串数组`)
+  if (input.discoveryPolicy !== undefined) validateMapDiscoveryPolicy(input.discoveryPolicy, `${path}.discoveryPolicy`, errors)
   if (!isRecord(input.seedState)) errors.push(`${path}.seedState 必须是对象`)
   else validateState(input.seedState, errors)
+}
+
+function validateMapDiscoveryPolicy(input: unknown, path: string, errors: string[]) {
+  if (!isRecord(input)) { errors.push(`${path} 必须是对象`); return }
+  if (input.initialKnownLocation !== 'startingLocation') errors.push(`${path}.initialKnownLocation 必须为 startingLocation`)
+  if (!Array.isArray(input.allowedSources) || !input.allowedSources.every((source) => ['birth', 'exploration', 'npc', 'rumor', 'event'].includes(String(source)))) errors.push(`${path}.allowedSources 格式错误`)
+  if (!isNumber(input.maxNewLocationsPerAction) || input.maxNewLocationsPerAction < 0 || input.maxNewLocationsPerAction > 3) errors.push(`${path}.maxNewLocationsPerAction 必须是 0 到 3 的数字`)
+  if (typeof input.requireExplicitDiscovery !== 'boolean' || typeof input.aiMustNotCreateLocation !== 'boolean') errors.push(`${path} 的布尔策略字段格式错误`)
 }
 
 export function validateSuggestedAction(input: unknown): input is SuggestedAction {
@@ -84,14 +99,16 @@ export function validateScriptPackage(input: unknown): { valid: boolean; errors:
     Object.values(input.rules).forEach((rule, index) => {
       if (isRecord(rule) && rule.allowedMapIds !== undefined && (!Array.isArray(rule.allowedMapIds) || !rule.allowedMapIds.every(isString))) errors.push(`rules[${index}].allowedMapIds 必须是字符串数组`)
       if (isRecord(rule) && rule.allowedAgeStages !== undefined && (!Array.isArray(rule.allowedAgeStages) || !rule.allowedAgeStages.every((stage) => typeof stage === 'string' && AGE_STAGES.includes(stage)))) errors.push(`rules[${index}].allowedAgeStages 必须是受支持的年龄阶段数组`)
+      if (isRecord(rule) && rule.revealsLocationId !== undefined && !isString(rule.revealsLocationId)) errors.push(`rules[${index}].revealsLocationId 必须是字符串`)
     })
   }
   if (input.ageStageActions !== undefined && (!isRecord(input.ageStageActions) || Object.entries(input.ageStageActions).some(([stage, actions]) => !AGE_STAGES.includes(stage) || !Array.isArray(actions)))) errors.push('ageStageActions 必须按受支持的年龄阶段提供行动数组')
   if (isRecord(input.ageStageActions)) Object.entries(input.ageStageActions).forEach(([stage, actions]) => { if (AGE_STAGES.includes(stage) && Array.isArray(actions)) actions.forEach((action, index) => validateAction(action, `ageStageActions.${stage}[${index}]`, errors)) })
-  if (input.events !== undefined && (!Array.isArray(input.events) || input.events.some((event) => !isRecord(event) || !isString(event.id) || !isNumber(event.dueTurn) || !isString(event.title) || !isString(event.body) || !Array.isArray(event.tags)))) errors.push('events 中存在格式错误的延迟事件')
+  if (input.events !== undefined && (!Array.isArray(input.events) || input.events.some((event) => !isRecord(event) || !isString(event.id) || !isNumber(event.dueTurn) || !isString(event.title) || !isString(event.body) || !Array.isArray(event.tags) || (event.revealsLocationId !== undefined && !isString(event.revealsLocationId))))) errors.push('events 中存在格式错误的延迟事件')
   if (input.maps !== undefined && (!Array.isArray(input.maps) || input.maps.length === 0)) errors.push('maps 必须是至少包含一张地图的数组')
   if (Array.isArray(input.maps)) input.maps.forEach((map, index) => validateMap(map, index, errors))
   if (world.startingMapId !== undefined && !isString(world.startingMapId)) errors.push('world.startingMapId 必须是字符串')
+  if (world.mapDiscovery !== undefined) validateMapDiscoveryPolicy(world.mapDiscovery, 'world.mapDiscovery', errors)
   return { valid: errors.length === 0, errors }
 }
 

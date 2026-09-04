@@ -114,7 +114,7 @@ export async function generateNarration(config: ProviderConfig, request: Narrati
         model: config.model,
         temperature: 0.7,
         messages: [
-          { role: 'system', content: '你是一个克制、连续、尊重游戏状态的中文人生模拟器叙事者。只润色已有事实，不新增资源、人物或结果。输出两段短叙事，每段不超过80字，用JSON数组返回。' },
+          { role: 'system', content: '你是一个克制、连续、尊重游戏状态的中文人生模拟器叙事者。只润色已有事实，不新增资源、人物或结果。地图与人物也遵守已知边界：未在 context 中出现的地点和人物不能被写成玩家已知或已相遇，除非 resolvedFacts 明确说明本次发现。输出两段短叙事，每段不超过80字，用JSON数组返回。' },
           { role: 'user', content: JSON.stringify({ input: request.input, resolvedFacts: request.result, context: buildMemoryPacket(request.state) }) },
         ],
         response_format: { type: 'json_object' },
@@ -146,7 +146,7 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
         model: config.model,
         temperature: 0.85,
         messages: [
-          { role: 'system', content: '你是 AI 人生模拟器的行动候选助手。只能基于给定 ruleId 生成候选文案，不得创造新规则、资源、人物、地点或成本逻辑。只返回 JSON 对象：{"actions":[...]}。每次最多 6 个行动。' },
+          { role: 'system', content: '你是 AI 人生模拟器的行动候选助手。只能基于给定 ruleId 生成候选文案，不得创造新规则、资源、人物、地点或成本逻辑。地图只能使用 context 中已知地点；不要把未探索地点写进行动标题或描述。只返回 JSON 对象：{"actions":[...]}。每次最多 6 个行动。' },
           { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, context: buildMemoryPacket(request.state), allowedRuleIds: [...ruleIds].slice(0, 12), localCandidates }) },
         ],
         response_format: { type: 'json_object' },
@@ -190,8 +190,8 @@ export async function generateIncident(config: ProviderConfig, request: Incident
       model: config.model,
       temperature: 0.9,
       messages: [
-        { role: 'system', content: '你是 AI 人生模拟器的突发事件候选助手。根据给定的有限上下文，偶尔提出一个小型、可延后的生活事件；也可以返回 null。绝对不能直接修改金钱、物品、健康、时间或事实。只能返回 JSON：{"incident":null} 或 {"incident":{"title":"","body":"","kind":"opportunity|complication|encounter|weather","tags":[],"dueInTurns":1,"npcId":"可选","relationshipDelta":0}}。标题不超过100字，正文不超过420字，最多4个标签，关系变化只能是-2到2。' },
-        { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, context: buildMemoryPacket(request.state), npcs: request.state.npcs.slice(0, 8).map((npc) => ({ id: npc.id, name: npc.name, role: npc.role, relationship: npc.relationship })) }) },
+        { role: 'system', content: '你是 AI 人生模拟器的突发事件候选助手。根据给定的有限上下文，偶尔提出一个小型、可延后的生活事件；也可以返回 null。绝对不能直接修改金钱、物品、健康、时间或事实。地图必须遵守发现规则：不能凭空创造地点；如事件确实带来新地点，只能从 discoverableLocations 中选择一个已有 locationId，并填入 revealsLocationId。只能返回 JSON：{"incident":null} 或 {"incident":{"title":"","body":"","kind":"opportunity|complication|encounter|weather","tags":[],"dueInTurns":1,"npcId":"可选","relationshipDelta":0,"revealsLocationId":"可选地点ID"}}。标题不超过100字，正文不超过420字，最多4个标签，关系变化只能是-2到2。' },
+        { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, mapDiscovery: request.script.world.mapDiscovery, context: buildMemoryPacket(request.state), npcs: request.state.npcs.filter((npc) => npc.met !== false).slice(0, 8).map((npc) => ({ id: npc.id, name: npc.name, role: npc.role, relationship: npc.relationship })), discoverableLocations: request.state.locations.filter((location) => location.discovered === false).slice(0, 12).map((location) => ({ id: location.id, name: location.name, kind: location.kind })) }) },
       ],
       response_format: { type: 'json_object' },
     })

@@ -122,6 +122,8 @@ describe('action engine', () => {
     expect(state.player.stamina).toBe(25)
     expect(state.player.maxStamina).toBe(25)
     expect(state.npcs.every((npc) => npc.relationship === 0 && npc.lastInteraction === '尚未相遇')).toBe(true)
+    expect(state.locations.filter((location) => location.discovered !== false)).toHaveLength(1)
+    expect(state.locations.find((location) => location.discovered)?.name).toBe('灯塔街')
     expect(state.suggestedActions.every((action) => action.ruleId?.startsWith('baby-'))).toBe(true)
     expect(state.suggestedActions.some((action) => action.ruleId === 'dock')).toBe(false)
 
@@ -164,5 +166,25 @@ describe('action engine', () => {
     const result = resolveAction(state, '帮瑞娅整理缆绳', harborScript)
     expect(result.state.npcs.find((npc) => npc.id === 'rhea')?.met).toBe(true)
     expect(result.state.npcs.find((npc) => npc.id === 'jon')?.met).toBe(false)
+  })
+
+  it('expands the map only after a rule explicitly reveals a location', () => {
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '地图探索测试' } })
+    expect(state.locations.filter((location) => location.discovered !== false).map((location) => location.id)).toEqual(['home'])
+
+    const result = resolveAction(state, '去集市看看今天有什么新鲜事', script)
+    expect(result.state.locations.find((location) => location.id === 'market')?.discovered).toBe(true)
+    expect(result.state.locations.find((location) => location.id === 'forge')?.discovered).toBe(false)
+    expect(result.deltas).toContain('发现地点：晨雾集市')
+    expect(result.state.history[0].stateDiff?.some((diff) => diff.key === 'locations.market.discovered')).toBe(true)
+  })
+
+  it('reveals a catalogued location when a delayed event arrives', () => {
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '事件地图测试' } })
+    state.scheduledEvents = [{ id: 'map-event', dueTurn: 1, title: '邻居提起集市', body: '有人告诉你，集市今天比平时热闹。', tags: ['传闻'], revealsLocationId: 'market' }]
+
+    const result = resolveAction(state, '整理房间', script)
+    expect(result.state.locations.find((location) => location.id === 'market')?.discovered).toBe(true)
+    expect(result.state.history.some((event) => event.title === '邻居提起集市')).toBe(true)
   })
 })

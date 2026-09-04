@@ -28,6 +28,16 @@ function recoverStamina(state: GameState, amount: number) {
   state.player.stamina = Math.min(state.player.maxStamina, state.player.stamina + amount)
 }
 
+function revealLocation(state: GameState, locationId: string | undefined, source: NonNullable<GameState['locations'][number]['discoverySource']>) {
+  if (!locationId) return undefined
+  const location = state.locations.find((item) => item.id === locationId)
+  if (!location || location.discovered !== false) return undefined
+  location.discovered = true
+  location.discoverySource = source
+  location.discoveredAtTurn = state.turn
+  return location.name
+}
+
 function readPath(state: GameState, path: string): unknown {
   return path.split('.').reduce<unknown>((value, key) => {
     if (!value || typeof value !== 'object') return undefined
@@ -64,6 +74,10 @@ function stateDiff(before: GameState, after: GameState): StateDiff[] {
     const nextNpc = after.npcs.find((item) => item.id === npc.id)
     if (nextNpc && npc.relationship !== nextNpc.relationship) diffs.push({ key: `npcs.${npc.id}.relationship`, label: `${npc.name}关系`, before: npc.relationship, after: nextNpc.relationship })
   })
+  before.locations.forEach((location) => {
+    const nextLocation = after.locations.find((item) => item.id === location.id)
+    if (nextLocation && location.discovered === false && nextLocation.discovered !== false) diffs.push({ key: `locations.${location.id}.discovered`, label: `发现地点：${location.name}`, before: '未知', after: '已知' })
+  })
   return diffs
 }
 
@@ -85,6 +99,7 @@ function processDueEvents(next: GameState) {
       const npc = next.npcs.find((item) => item.id === event.npcId)
       if (npc) { npc.relationship += event.relationshipDelta; npc.lastInteraction = event.title; npc.met = true }
     }
+    revealLocation(next, event.revealsLocationId, 'event')
     next.world.narrative.unshift(event.body)
     next.world.currentFocus = event.title
     next.history.unshift({ id: `event-${next.turn}-${event.id}`, turn: next.turn, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: event.title, body: event.body, outcome: 'success', tags: [...event.tags, '延迟事件'] })
@@ -332,6 +347,11 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   }
 
   next.world.narrative = narrative
+  const revealedLocation = revealLocation(next, rule?.revealsLocationId, 'exploration')
+  if (revealedLocation) {
+    next.knownFacts = [...new Set([...next.knownFacts, `你亲自抵达了${revealedLocation}`])]
+    deltas.push(`发现地点：${revealedLocation}`)
+  }
   scheduleRuleEvent(next, script, actionRule)
   advanceNpcSchedules(next)
   processDueEvents(next)
@@ -358,6 +378,7 @@ export function buildInitialState(script: ScriptPackage, mapId?: string): GameSt
   next.player.maxHealth = Math.max(profile.maxHealth ?? 100, next.player.health)
   next.player.maxStamina = Math.max(profile.maxStamina ?? 100, next.player.stamina)
   next.npcs = next.npcs.map((npc) => ({ ...npc, met: npc.met ?? (npc.relationship !== 0 || npc.lastInteraction !== '尚未相遇') }))
+  next.locations = next.locations.map((location) => ({ ...location, discovered: location.discovered ?? true }))
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
   return next
@@ -374,6 +395,8 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
   const age = clampAgeToStage(script, Number(requestedAge), stage)
   const options = getAgeOptions(script, selectedMap, stage)
   const freshNpcs = base.npcs.map((npc) => ({ ...npc, relationship: 0, lastInteraction: '尚未相遇', met: false }))
+  const startingLocationName = (selectedMap?.startingLocation ?? base.world.location).split(' · ').at(-1)
+  const startingLocationId = base.locations.find((location) => location.name === startingLocationName)?.id ?? base.locations[0]?.id
   const requestedRole = setup.player?.role
   const requestedProfession = setup.player?.profession
   const player = {
@@ -396,6 +419,9 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
     ...base,
     player,
     npcs: freshNpcs,
+    locations: base.locations.map((location) => location.id === startingLocationId
+      ? { ...location, discovered: true, discoverySource: 'birth', discoveredAtTurn: 0 }
+      : { ...location, discovered: false, discoverySource: undefined, discoveredAtTurn: undefined }),
     world: {
       ...base.world,
       day: 1,

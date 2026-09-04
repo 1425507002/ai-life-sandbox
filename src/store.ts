@@ -87,6 +87,9 @@ function normalizeSavedState(rawState: GameState, script: ScriptPackage, mapId?:
   const defaultMaxStamina = Math.max(1, ageProfile.maxStamina ?? ageProfile.startingStamina ?? 80)
   const healthMax = isUnplayedLife ? defaultMaxHealth : Math.max(defaultMaxHealth, rawState.player.maxHealth ?? base.player.maxHealth ?? rawState.player.health)
   const staminaMax = isUnplayedLife ? defaultMaxStamina : Math.max(defaultMaxStamina, rawState.player.maxStamina ?? base.player.maxStamina ?? rawState.player.stamina)
+  const selectedMap = script.maps?.find((map) => map.id === savedMapId)
+  const startingLocationName = (selectedMap?.startingLocation ?? base.world.location).split(' · ').at(-1)
+  const startingLocationId = (Array.isArray(rawState.locations) ? rawState.locations : base.locations).find((location) => location.name === startingLocationName)?.id ?? base.locations[0]?.id
   const state: GameState = {
     ...base,
     ...rawState,
@@ -106,7 +109,13 @@ function normalizeSavedState(rawState: GameState, script: ScriptPackage, mapId?:
         ? { ...npc, relationship: 0, lastInteraction: '尚未相遇', met: false }
         : { ...npc, met: npc.met ?? (npc.relationship !== 0 || npc.lastInteraction !== '尚未相遇') })
       : base.npcs,
-    locations: Array.isArray(rawState.locations) ? rawState.locations : base.locations,
+    locations: Array.isArray(rawState.locations)
+      ? rawState.locations.map((location) => isUnplayedLife
+        ? location.id === startingLocationId
+          ? { ...location, discovered: true, discoverySource: 'birth' as const, discoveredAtTurn: 0 }
+          : { ...location, discovered: false, discoverySource: undefined, discoveredAtTurn: undefined }
+        : { ...location, discovered: location.discovered ?? true })
+      : base.locations,
     history: Array.isArray(rawState.history) ? rawState.history : [],
     inventory: Array.isArray(rawState.inventory) ? rawState.inventory : [],
     knownFacts: Array.isArray(rawState.knownFacts) ? rawState.knownFacts : [],
