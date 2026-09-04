@@ -165,7 +165,13 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
       if (!ruleIds.has(ruleId) || seen.has(action.title)) return false
       seen.add(action.title)
       return true
-    }).map((action, index) => ({ ...action, id: `ai:${action.ruleId ?? action.id}:${request.state.turn}:${index}`, ruleId: action.ruleId ?? action.id }))
+    }).map((action, index) => {
+      const ruleId = action.ruleId ?? action.id
+      const localAction = localCandidates.find((candidate) => (candidate.ruleId ?? candidate.id) === ruleId)
+      return localAction
+        ? { ...localAction, title: action.title, description: action.description, id: `ai:${ruleId}:${request.state.turn}:${index}`, ruleId }
+        : action
+    })
     return candidates.length ? candidates.slice(0, 6) : null
   } catch {
     return null

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkProviderConnection, generateIncident, generateNarration } from './aiProvider'
+import { checkProviderConnection, generateActionCandidates, generateIncident, generateNarration } from './aiProvider'
 import { buildInitialState } from './actionEngine'
 import { getScript } from '../data/scripts'
 
@@ -76,5 +76,16 @@ describe('checkProviderConnection', () => {
     expect(result?.npcId).toBe('mira')
     const request = vi.mocked(fetch).mock.calls[0]?.[1]
     expect(String(request?.body)).not.toContain('"player":{"name"')
+  })
+
+  it('keeps local action costs authoritative over AI copy', async () => {
+    const script = getScript('western-world')
+    const state = buildInitialState(script)
+    const local = state.suggestedActions[0]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [{ ...local, title: '改写后的行动', description: '只改文案', timeCost: 1, moneyCost: 0, staminaCost: 0, location: '伪造地点', risk: '几乎没有' }] }) } }] }), { status: 200 })))
+
+    const result = await generateActionCandidates(provider, { state, script, localCandidates: [local] })
+
+    expect(result?.[0]).toMatchObject({ title: '改写后的行动', timeCost: local.timeCost, moneyCost: local.moneyCost, staminaCost: local.staminaCost, location: local.location, risk: local.risk })
   })
 })

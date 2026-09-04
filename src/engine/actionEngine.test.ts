@@ -117,6 +117,11 @@ describe('action engine', () => {
     expect(state.player.ageStage).toBe('baby')
     expect(state.player.role).toBe('被照料的孩子')
     expect(state.player.profession).toBe('尚未拥有职业')
+    expect(state.player.health).toBe(30)
+    expect(state.player.maxHealth).toBe(30)
+    expect(state.player.stamina).toBe(25)
+    expect(state.player.maxStamina).toBe(25)
+    expect(state.npcs.every((npc) => npc.relationship === 0 && npc.lastInteraction === '尚未相遇')).toBe(true)
     expect(state.suggestedActions.every((action) => action.ruleId?.startsWith('baby-'))).toBe(true)
     expect(state.suggestedActions.some((action) => action.ruleId === 'dock')).toBe(false)
 
@@ -151,5 +156,13 @@ describe('action engine', () => {
     expect(result.state.turn).toBe(1)
     expect(result.state.history[0].ruleId).toMatch(/^child-/)
     expect(result.state.player.profession).toBe('学生')
+  })
+
+  it('hides NPCs until a real interaction marks them as met', () => {
+    const state = buildNewLifeState(harborScript, { mapId: 'tide-harbor', ageStage: 'adult', player: { name: '初次相遇测试' } })
+    expect(state.npcs.every((npc) => npc.met === false)).toBe(true)
+    const result = resolveAction(state, '帮瑞娅整理缆绳', harborScript)
+    expect(result.state.npcs.find((npc) => npc.id === 'rhea')?.met).toBe(true)
+    expect(result.state.npcs.find((npc) => npc.id === 'jon')?.met).toBe(false)
   })
 })

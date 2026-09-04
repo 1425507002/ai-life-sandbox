@@ -7,12 +7,13 @@ import './styles.css'
 const DEV_PWA_RECOVERY_KEY = 'ai-life-worlds:dev-pwa-recovered'
 
 const startApp = async () => {
-  if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  const isLocalPreview = import.meta.env.PROD && ['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '4174'
+  if ((import.meta.env.DEV || isLocalPreview) && 'serviceWorker' in navigator) {
     try {
-      // Never let a production preview's PWA worker serve stale assets from the
-      // development port. This is especially important when the same localhost
-      // URL is opened in multiple browser profiles (for example Edge and the
-      // embedded Codex browser).
+      // Never let a local preview's PWA worker serve stale assets. Preview mode
+      // is production-built, so import.meta.env.DEV alone is not enough here.
+      // This matters when the same localhost URL is opened in multiple browser
+      // profiles (for example Edge and the embedded Codex browser).
       const appScope = `${window.location.origin}/`
       const registrations = await navigator.serviceWorker.getRegistrations()
       const appRegistrations = registrations.filter((registration) => registration.scope === appScope)

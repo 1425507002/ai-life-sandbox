@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { buildInitialState, buildNewLifeState, resolveAction } from './engine/actionEngine'
 import { generateActionCandidates, generateIncident, generateNarration, ZHIPU_FLASH_PROVIDER } from './engine/aiProvider'
-import { queueIncidentCandidate } from './engine/incidents'
-import { getAgeOptions, getAgeStageForAge } from './engine/ageRules'
+import { queueIncidentCandidate, validateScheduledEvent } from './engine/incidents'
+import { getAgeOptions, getAgeStageForAge, getAgeStageProfile } from './engine/ageRules'
 import { generateSuggestedActions } from './engine/suggestionEngine'
 import { scriptPackages } from './data/scripts'
 import { loadRuntime, saveRuntime, validateRuntimePayload } from './storage'
 import type { ActionGenerationMode, ActionSummary, GameSession, GameState, NavKey, NewLifeSetup, ProviderConfig, ScriptPackage } from './types'
-import { validateScriptPackage } from './engine/scriptSchema'
+import { validateScriptPackage, validateSuggestedAction } from './engine/scriptSchema'
 import { isUiThemeId } from './uiThemes'
 import type { UiThemeId } from './types'
 
@@ -81,28 +81,81 @@ function normalizeSavedState(rawState: GameState, script: ScriptPackage, mapId?:
   const base = buildInitialState(script, mapId)
   const age = Number.isFinite(rawState.player.age) ? Math.max(0, Math.min(120, rawState.player.age)) : base.player.age
   const savedMapId = typeof rawState.world.mapId === 'string' ? rawState.world.mapId : mapId ?? script.world.startingMapId
+  const isUnplayedLife = rawState.turn === 0 && Array.isArray(rawState.history) && rawState.history.length === 0 && Array.isArray(rawState.knownFacts) && rawState.knownFacts.length === 0
+  const ageProfile = getAgeStageProfile(script, getAgeStageForAge(script, age))
+  const defaultMaxHealth = Math.max(1, ageProfile.maxHealth ?? ageProfile.startingHealth ?? 100)
+  const defaultMaxStamina = Math.max(1, ageProfile.maxStamina ?? ageProfile.startingStamina ?? 80)
+  const healthMax = isUnplayedLife ? defaultMaxHealth : Math.max(defaultMaxHealth, rawState.player.maxHealth ?? base.player.maxHealth ?? rawState.player.health)
+  const staminaMax = isUnplayedLife ? defaultMaxStamina : Math.max(defaultMaxStamina, rawState.player.maxStamina ?? base.player.maxStamina ?? rawState.player.stamina)
   const state: GameState = {
     ...base,
     ...rawState,
-    player: { ...base.player, ...rawState.player, age, ageStage: getAgeStageForAge(script, age) },
+    player: {
+      ...base.player,
+      ...rawState.player,
+      age,
+      ageStage: getAgeStageForAge(script, age),
+      health: isUnplayedLife ? Math.min(defaultMaxHealth, ageProfile.startingHealth ?? defaultMaxHealth) : Math.max(0, Math.min(healthMax, rawState.player.health)),
+      maxHealth: healthMax,
+      stamina: isUnplayedLife ? Math.min(defaultMaxStamina, ageProfile.startingStamina ?? defaultMaxStamina) : Math.max(0, Math.min(staminaMax, rawState.player.stamina)),
+      maxStamina: staminaMax,
+    },
     world: { ...base.world, ...rawState.world, mapId: savedMapId },
-    npcs: Array.isArray(rawState.npcs) ? rawState.npcs : base.npcs,
+    npcs: Array.isArray(rawState.npcs)
+      ? rawState.npcs.map((npc) => isUnplayedLife
+        ? { ...npc, relationship: 0, lastInteraction: '尚未相遇', met: false }
+        : { ...npc, met: npc.met ?? (npc.relationship !== 0 || npc.lastInteraction !== '尚未相遇') })
+      : base.npcs,
     locations: Array.isArray(rawState.locations) ? rawState.locations : base.locations,
     history: Array.isArray(rawState.history) ? rawState.history : [],
     inventory: Array.isArray(rawState.inventory) ? rawState.inventory : [],
     knownFacts: Array.isArray(rawState.knownFacts) ? rawState.knownFacts : [],
-    scheduledEvents: Array.isArray(rawState.scheduledEvents) ? rawState.scheduledEvents : [],
+    scheduledEvents: [],
     memory: rawState.memory && typeof rawState.memory === 'object' ? rawState.memory : base.memory,
     turn: Number.isFinite(rawState.turn) ? Math.max(0, rawState.turn) : 0,
   }
+  state.scheduledEvents = Array.isArray(rawState.scheduledEvents)
+    ? rawState.scheduledEvents.filter((event) => validateScheduledEvent(event, state)).slice(0, 8)
+    : []
   state.suggestedActions = generateSuggestedActions(state, script)
   return state
+}
+
+function hasUniqueIds(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  const ids = value.map((item) => item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>).id : undefined)
+  return ids.every((id): id is string => typeof id === 'string' && id.trim().length > 0) && new Set(ids).size === ids.length
+}
+
+function hasValidStateCollections(candidate: Partial<GameState>): boolean {
+  const npcsValid = Array.isArray(candidate.npcs) && candidate.npcs.every((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    const npc = value as unknown as Record<string, unknown>
+    return ['id', 'name', 'role', 'avatar', 'summary', 'lastInteraction', 'status'].every((key) => typeof npc[key] === 'string') && typeof npc.relationship === 'number' && Number.isFinite(npc.relationship) && (npc.met === undefined || typeof npc.met === 'boolean')
+  })
+  const locationsValid = Array.isArray(candidate.locations) && candidate.locations.every((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    const location = value as unknown as Record<string, unknown>
+    return ['id', 'name', 'kind', 'description', 'distance'].every((key) => typeof location[key] === 'string') && typeof location.available === 'boolean'
+  })
+  const historyValid = Array.isArray(candidate.history) && candidate.history.every((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    const event = value as unknown as Record<string, unknown>
+    return ['id', 'date', 'title', 'body', 'outcome'].every((key) => typeof event[key] === 'string') && Array.isArray(event.tags) && event.tags.every((tag) => typeof tag === 'string')
+  })
+  return npcsValid && locationsValid && historyValid
 }
 
 function isStateLike(value: unknown): value is GameState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const candidate = value as Partial<GameState>
-  return Boolean(candidate.player && typeof candidate.player === 'object' && typeof candidate.player.age === 'number' && candidate.world && typeof candidate.world === 'object' && typeof candidate.turn === 'number' && Array.isArray(candidate.npcs) && Array.isArray(candidate.locations) && Array.isArray(candidate.history) && Array.isArray(candidate.inventory) && Array.isArray(candidate.knownFacts) && Array.isArray(candidate.suggestedActions))
+  const player = candidate.player
+  const world = candidate.world
+  const playerValid = Boolean(player && typeof player === 'object' && typeof player.name === 'string' && typeof player.age === 'number' && Number.isFinite(player.age) && typeof player.role === 'string' && typeof player.profession === 'string' && typeof player.mood === 'string' && [player.health, player.stamina, player.money, player.reputation].every((item) => typeof item === 'number' && Number.isFinite(item)) && Array.isArray(player.traits) && player.traits.every((item) => typeof item === 'string'))
+  const worldValid = Boolean(world && typeof world === 'object' && typeof world.day === 'number' && Number.isFinite(world.day) && typeof world.time === 'string' && typeof world.season === 'string' && typeof world.weather === 'string' && typeof world.location === 'string' && typeof world.region === 'string' && typeof world.atmosphere === 'string' && typeof world.headline === 'string' && typeof world.currentFocus === 'string' && Array.isArray(world.narrative) && world.narrative.every((item) => typeof item === 'string') && Array.isArray(world.publicNews) && world.publicNews.every((item) => typeof item === 'string'))
+  const arraysValid = hasValidStateCollections(candidate) && Array.isArray(candidate.inventory) && candidate.inventory.every((item) => typeof item === 'string') && Array.isArray(candidate.knownFacts) && candidate.knownFacts.every((item) => typeof item === 'string') && Array.isArray(candidate.suggestedActions) && candidate.suggestedActions.every((item) => validateSuggestedAction(item))
+  const scheduledEventsValid = candidate.scheduledEvents === undefined || (Array.isArray(candidate.scheduledEvents) && hasUniqueIds(candidate.scheduledEvents))
+  return Boolean(playerValid && worldValid && arraysValid && scheduledEventsValid && typeof candidate.turn === 'number' && Number.isFinite(candidate.turn) && hasUniqueIds(candidate.npcs) && hasUniqueIds(candidate.locations) && hasUniqueIds(candidate.history) && hasUniqueIds(candidate.suggestedActions))
 }
 
 function normalizeSessions(raw: unknown, scripts: ScriptPackage[]): Record<string, GameSession> {

@@ -53,14 +53,43 @@ describe('game store', () => {
     expect(session.state.player.age).toBe(0)
     expect(session.state.player.ageStage).toBe('baby')
     expect(session.state.player.profession).toBe('尚未拥有职业')
-    expect(session.state.player.health).toBe(70)
+    expect(session.state.player.health).toBe(30)
+    expect(session.state.player.maxHealth).toBe(30)
     expect(session.state.player.stamina).toBe(25)
+    expect(session.state.player.maxStamina).toBe(25)
     expect(session.state.world.day).toBe(1)
     expect(session.state.world.time).toBe('清晨 · 07:00')
     expect(session.state.history).toHaveLength(0)
     expect(session.state.inventory).toHaveLength(0)
     expect(session.state.suggestedActions.every((action) => action.ruleId?.startsWith('baby-'))).toBe(true)
     expect(session.state.suggestedActions.some((action) => action.title.includes('码头') || action.title.includes('关店'))).toBe(false)
+    expect(session.state.npcs.every((npc) => npc.met === false)).toBe(true)
+  })
+
+  it('migrates an old unplayed save so seeded NPC relationships are not restored', () => {
+    vi.stubGlobal('window', {})
+    const legacyState = structuredClone(getScript('western-world').world.seedState)
+    legacyState.player.age = 0
+    legacyState.player.ageStage = 'baby'
+    legacyState.turn = 0
+    legacyState.history = []
+    legacyState.knownFacts = []
+    legacyState.npcs = legacyState.npcs.map((npc) => ({ ...npc, relationship: 30, lastInteraction: '旧存档残留关系' }))
+
+    useGameStore.getState().importRuntime({
+      format: 'ai-life-world-save',
+      version: 2,
+      activeScriptId: 'western-world',
+      activeLifeId: 'legacy',
+      sessions: { legacy: { scriptId: 'western-world', state: legacyState, snapshots: [{ turn: 0, state: legacyState }] } },
+      providerConfig: { endpoint: '', apiKey: '', model: '' },
+    })
+
+    const current = useGameStore.getState()
+    const session = current.sessions[current.activeLifeId]
+    expect(session.state.player.age).toBe(0)
+    expect(session.state.npcs.every((npc) => npc.relationship === 0 && npc.lastInteraction === '尚未相遇')).toBe(true)
+    expect(session.state.npcs.every((npc) => npc.met === false)).toBe(true)
   })
 
   it('switches UI themes without changing the active life', () => {
@@ -109,11 +138,13 @@ describe('game store', () => {
   it('ignores malformed snapshots instead of crashing import', () => {
     vi.stubGlobal('window', {})
     const validState = structuredClone(getScript('dawnmere').world.seedState)
+    const malformedNpcState = { ...structuredClone(validState), npcs: [{ id: 'broken' }] }
+    const duplicateEventState = { ...structuredClone(validState), scheduledEvents: [{ id: 'dup', dueTurn: validState.turn + 1, title: '第一件事', body: '一件待发生的小事。', tags: [] }, { id: 'dup', dueTurn: validState.turn + 2, title: '第二件事', body: '另一件待发生的小事。', tags: [] }] }
     useGameStore.getState().importRuntime({
       format: 'ai-life-world-save',
       version: 2,
       activeScriptId: 'dawnmere',
-      sessions: { dawnmere: { scriptId: 'dawnmere', state: validState, snapshots: [{ turn: 1, state: { player: { age: 0 }, world: {}, turn: 1 } }] } },
+      sessions: { dawnmere: { scriptId: 'dawnmere', state: validState, snapshots: [{ turn: 1, state: { player: { age: 0 }, world: {}, turn: 1 } }, { turn: 2, state: malformedNpcState }, { turn: 3, state: duplicateEventState }] } },
       providerConfig: { endpoint: '', apiKey: '', model: '' },
     })
 

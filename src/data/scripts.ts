@@ -40,7 +40,7 @@ const dawnmere: ScriptPackage = {
     seedState: {
       player: {
         name: '林澄', age: 22, ageStage: 'adult', role: '普通居民', profession: '木匠学徒', mood: '平静',
-        health: 82, stamina: 68, money: 42, reputation: 12, traits: ['耐心', '手巧', '还在寻找方向'],
+        health: 82, maxHealth: 100, stamina: 68, maxStamina: 100, money: 42, reputation: 12, traits: ['耐心', '手巧', '还在寻找方向'],
       },
       world: {
         day: 3, time: '清晨 · 07:20', season: '初春', weather: '薄雾',
@@ -112,7 +112,7 @@ const tideglass: ScriptPackage = {
     startingLocation: '灰潮港 · 灯塔街',
     opening: ['海风把盐味送进半开的窗。', '港口刚刚退潮，湿石路上留下了一层闪光的水。', '今天的第一班货船午后靠岸，而你还没有决定要不要去码头看看。'],
     seedState: {
-      player: { name: '沈原', age: 27, ageStage: 'adult', role: '港口居民', profession: '船具店帮工', mood: '有些犹豫', health: 76, stamina: 62, money: 58, reputation: 18, traits: ['观察敏锐', '不喜欢欠人情', '对远方好奇'] },
+      player: { name: '沈原', age: 27, ageStage: 'adult', role: '港口居民', profession: '船具店帮工', mood: '有些犹豫', health: 76, maxHealth: 100, stamina: 62, maxStamina: 100, money: 58, reputation: 18, traits: ['观察敏锐', '不喜欢欠人情', '对远方好奇'] },
       world: { day: 12, time: '黄昏 · 17:10', season: '晚夏', weather: '海风', location: '灰潮港 · 灯塔街', region: '西海岸', atmosphere: '潮湿 · 有人声', headline: '一艘没有挂出港旗的旧货船正在外港减速。', narrative: [], currentFocus: '决定今晚是否去码头', publicNews: ['西堤仓库临时招工', '灯塔管理员在找丢失的钥匙', '外港有一艘陌生货船'] },
       npcs: [
         { id: 'rhea', name: '瑞娅', role: '船具店老板', avatar: 'R', summary: '精打细算，但会记住每个认真工作的人。', relationship: 31, lastInteraction: '今天下午一起盘点了麻绳', status: '正在关店', schedule: ['正在关店', '核对今天的船具账目', '把潮湿的帆布挂到后院'] },
@@ -139,7 +139,7 @@ const tideglass: ScriptPackage = {
   },
 }
 
-const ageStageActions = {
+const ageStageActions: ScriptPackage['ageStageActions'] = {
   baby: [
     { id: 'baby-care', ruleId: 'baby-care', title: '接受照料', description: '让照料者安排喂食、擦洗和安抚，先把身体照顾好。', location: '住处', timeCost: 45, moneyCost: 0, staminaCost: 1, risk: '几乎没有', tone: 'sky' },
     { id: 'baby-observe', ruleId: 'baby-observe', title: '观察熟悉的声音', description: '在安全的住处听一听、看一看，把一个细节留在记忆里。', location: '住处', timeCost: 30, moneyCost: 0, staminaCost: 1, risk: '几乎没有', tone: 'sage' },
@@ -160,7 +160,7 @@ const ageStageActions = {
     { id: 'elder-teach', ruleId: 'elder-teach', title: '传授一段经验', description: '把自己熟悉的经验讲给愿意倾听的人。', location: '住处', timeCost: 70, moneyCost: 0, staminaCost: 2, risk: '低', tone: 'gold' },
     { id: 'elder-walk', ruleId: 'elder-walk', title: '沿熟悉街道散步', description: '沿着熟悉的路线走一圈，看看环境有什么变化。', location: '住处', timeCost: 60, moneyCost: 0, staminaCost: 5, risk: '低', tone: 'sage' },
   ],
-} as const
+}
 
 const ageActionRules = Object.fromEntries(Object.entries(ageStageActions).flatMap(([stage, actions]) => actions.map((action) => [action.ruleId, { id: action.ruleId, allowedAgeStages: [stage], blockedMessage: '这个行动只适合当前对应的年龄阶段。' }])) )
 

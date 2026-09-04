@@ -73,3 +73,18 @@ test('provider error details remain visible in settings', async ({ page }, testI
   await expect(page.locator('.connection-result')).toContainText('HTTP 401')
   await expect(page.locator('.connection-result')).not.toContainText('API Key 未通过验证')
 })
+
+test('a baby life does not start with adult NPC relationships', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only flow')
+  await page.goto('/')
+  await page.getByRole('button', { name: '开始一段新人生' }).click()
+  await page.getByLabel('名字').fill('新生儿测试')
+  await page.locator('.life-map-option').filter({ hasText: '灰潮港' }).click()
+  await page.getByLabel('年龄阶段').selectOption('baby')
+  await page.getByRole('button', { name: '开始这段人生' }).click()
+  await page.locator('.nav-item').filter({ hasText: '人物' }).click()
+  await expect(page.getByRole('heading', { name: '他们也在过自己的生活' })).toBeVisible()
+  const cards = page.locator('.person-card')
+  await expect(cards).toHaveCount(0)
+  await expect(page.getByText('还没有认识这里的人')).toBeVisible()
+})

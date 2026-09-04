@@ -20,6 +20,14 @@ function cloneState(state: GameState): GameState {
   return structuredClone(state)
 }
 
+function recoverHealth(state: GameState, amount: number) {
+  state.player.health = Math.min(state.player.maxHealth, state.player.health + amount)
+}
+
+function recoverStamina(state: GameState, amount: number) {
+  state.player.stamina = Math.min(state.player.maxStamina, state.player.stamina + amount)
+}
+
 function readPath(state: GameState, path: string): unknown {
   return path.split('.').reduce<unknown>((value, key) => {
     if (!value || typeof value !== 'object') return undefined
@@ -43,7 +51,9 @@ function stateDiff(before: GameState, after: GameState): StateDiff[] {
   const diffs: StateDiff[] = []
   const values: Array<[string, string, string | number, string | number]> = [
     ['player.health', '状态', before.player.health, after.player.health],
+    ['player.maxHealth', '状态上限', before.player.maxHealth, after.player.maxHealth],
     ['player.stamina', '精力', before.player.stamina, after.player.stamina],
+    ['player.maxStamina', '精力上限', before.player.maxStamina, after.player.maxStamina],
     ['player.money', '铜币', before.player.money, after.player.money],
     ['player.reputation', '声望', before.player.reputation, after.player.reputation],
     ['world.time', '时间', before.world.time, after.world.time],
@@ -73,7 +83,7 @@ function processDueEvents(next: GameState) {
     if (event.fact) next.knownFacts = [...new Set([...next.knownFacts, event.fact])]
     if (event.npcId && event.relationshipDelta) {
       const npc = next.npcs.find((item) => item.id === event.npcId)
-      if (npc) { npc.relationship += event.relationshipDelta; npc.lastInteraction = event.title }
+      if (npc) { npc.relationship += event.relationshipDelta; npc.lastInteraction = event.title; npc.met = true }
     }
     next.world.narrative.unshift(event.body)
     next.world.currentFocus = event.title
@@ -134,7 +144,7 @@ function resolveAgeAction(next: GameState, actionRule: string) {
   const deltas: string[] = []
   let outcome: ActionResult['outcome'] = 'success'
   if (actionRule === 'baby-care') {
-    next.player.health = Math.min(100, next.player.health + 2)
+    recoverHealth(next, 2)
     next.player.stamina = Math.max(0, next.player.stamina - 1)
     next.world.currentFocus = '熟悉的照料让今天安稳下来'
     narrative.push('照料者替你整理好衣物和被褥，喂食、擦洗与安抚占去了上午的大半时间。', '你还不能决定远方的事，但能感受到熟悉的声音和温暖正在变成安全感。')
@@ -146,16 +156,18 @@ function resolveAgeAction(next: GameState, actionRule: string) {
     narrative.push('你睁大眼睛看着窗边的光影，屋里的人声、木门的吱呀和远处的钟声逐渐有了区别。', '这算不上一次远行，却是你第一次主动把世界留在记忆里。')
     deltas.push('精力 -1', '记住一个熟悉的声音')
   } else if (actionRule === 'baby-rest') {
-    next.player.stamina = Math.min(100, next.player.stamina + 5)
+    recoverStamina(next, 5)
     next.world.currentFocus = '在照料下安稳休息'
     narrative.push('你在熟悉的气味和轻声哼唱里睡了一觉。醒来时窗外的光线已经换了位置。', '今天没有发生惊天动地的事，但身体得到了真正需要的休息。')
     deltas.push('精力 +5')
   } else if (actionRule === 'child-play') {
     next.player.stamina = Math.max(0, next.player.stamina - 3)
+    next.player.maxHealth += 1
+    next.player.maxStamina += 2
     next.player.mood = '玩得很开心'
     next.world.currentFocus = '记住住处附近可以玩耍的地方'
     narrative.push('你在住处附近玩了一阵，石子、木棍和水沟都足够成为一场小小的冒险。', '回家时鞋底沾了泥，但你已经记住了哪条路最安全。')
-    deltas.push('精力 -3', '心情变得轻快')
+    deltas.push('精力 -3', '状态上限 +1', '精力上限 +2', '心情变得轻快')
   } else if (actionRule === 'child-learn') {
     next.player.stamina = Math.max(0, next.player.stamina - 2)
     next.knownFacts = [...new Set([...next.knownFacts, '你学会了一个适合当前年龄的基础词汇'])]
@@ -183,13 +195,15 @@ function resolveAgeAction(next: GameState, actionRule: string) {
   } else if (actionRule === 'teen-explore') {
     outcome = 'partial'
     next.player.stamina = Math.max(0, next.player.stamina - 8)
+    next.player.maxHealth += 1
+    next.player.maxStamina += 2
     next.world.currentFocus = '熟悉生活圈边缘的安全路线'
     next.knownFacts = [...new Set([...next.knownFacts, '你记住了生活圈边缘的一条安全路线'])]
     narrative.push('你只沿着熟悉生活圈的边缘走了一段，没有贸然进入危险区域。', '回程时你记住了一条更稳妥的小路，也意识到真正的远行还需要准备。')
-    deltas.push('精力 -8', '获得安全路线', '仍有未探索区域')
+    deltas.push('精力 -8', '状态上限 +1', '精力上限 +2', '获得安全路线', '仍有未探索区域')
   } else if (actionRule === 'elder-rest') {
-    next.player.stamina = Math.min(100, next.player.stamina + 4)
-    next.player.health = Math.min(100, next.player.health + 1)
+    recoverStamina(next, 4)
+    recoverHealth(next, 1)
     next.world.currentFocus = '把今天的节奏放慢一些'
     narrative.push('你把窗帘拉开，让房间通风，然后按自己的节奏喝完一杯热饮。', '慢下来并不等于停滞，身体提醒你明天仍然可以继续。')
     deltas.push('精力 +4', '状态 +1')
@@ -267,7 +281,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     deltas.push('声望 +1', '获得情报：旧桥影响运输')
   } else if (actionRule === 'smith') {
     const npc = next.npcs.find((item) => item.id === 'oren')
-    if (npc) { npc.relationship += 4; npc.lastInteraction = '今天上午请你帮忙整理了一批铆钉'; npc.status = '正在等你明天来试工' }
+    if (npc) { npc.relationship += 4; npc.lastInteraction = '今天上午请你帮忙整理了一批铆钉'; npc.status = '正在等你明天来试工'; npc.met = true }
     next.player.reputation += 2
     next.world.location = '晨雾镇 · 奥伦铁匠铺'
     next.world.currentFocus = '明天清晨去铁匠铺试工'
@@ -275,7 +289,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     next.knownFacts = [...new Set([...next.knownFacts, '奥伦愿意让你明天清晨试工'])]
     deltas.push('奥伦好感 +4', '声望 +2', '新增安排：明日清晨试工')
   } else if (actionRule === 'tidy') {
-    next.player.health = Math.min(100, next.player.health + 2)
+    recoverHealth(next, 2)
     next.world.location = '晨雾镇 · 住处'
     next.world.currentFocus = '房间变得更适合休息和工作'
     narrative = ['你把窗边的衣物叠好，又把木屑扫到门外。旧木工刀在整理后终于重新出现在桌面上。', '房间没有因此变得宽敞，但每样东西都更容易找到。你发现窗闩旁夹着一张没有署名的小纸条。']
@@ -297,7 +311,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     deltas.push('获得机会：明早西堤短工')
   } else if (actionRule === 'rhea') {
     const npc = next.npcs.find((item) => item.id === 'rhea')
-    if (npc) { npc.relationship += 3; npc.lastInteraction = '今天傍晚一起关店'; }
+    if (npc) { npc.relationship += 3; npc.lastInteraction = '今天傍晚一起关店'; npc.met = true }
     next.world.location = '灰潮港 · 船具店'
     next.world.currentFocus = '瑞娅愿意告诉你一些外港的消息'
     narrative = ['你留下来帮瑞娅把缆绳挂回墙上。她没有问你为什么留下，只把最重的一捆留给自己。', '关门时，她说那艘旧货船不像普通商船，船上的人似乎不想让码头工看清他们的货。']
@@ -340,6 +354,10 @@ export function buildInitialState(script: ScriptPackage, mapId?: string): GameSt
     next.world.narrative = [...script.world.opening]
   }
   next.player.ageStage = getAgeStageForAge(script, next.player.age)
+  const profile = getAgeStageProfile(script, next.player.ageStage)
+  next.player.maxHealth = Math.max(profile.maxHealth ?? 100, next.player.health)
+  next.player.maxStamina = Math.max(profile.maxStamina ?? 100, next.player.stamina)
+  next.npcs = next.npcs.map((npc) => ({ ...npc, met: npc.met ?? (npc.relationship !== 0 || npc.lastInteraction !== '尚未相遇') }))
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
   return next
@@ -355,6 +373,7 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
   const requestedAge = hasExplicitAge ? setup.player?.age ?? 18 : (stage === 'adult' ? 18 : getAgeStageDefinition(script, stage).minAge)
   const age = clampAgeToStage(script, Number(requestedAge), stage)
   const options = getAgeOptions(script, selectedMap, stage)
+  const freshNpcs = base.npcs.map((npc) => ({ ...npc, relationship: 0, lastInteraction: '尚未相遇', met: false }))
   const requestedRole = setup.player?.role
   const requestedProfession = setup.player?.profession
   const player = {
@@ -365,8 +384,10 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
     role: requestedRole && options.roles.includes(requestedRole) ? requestedRole : options.roles[0] ?? base.player.role,
     profession: requestedProfession && options.professions.includes(requestedProfession) ? requestedProfession : options.professions[0] ?? base.player.profession,
     mood: setup.player?.mood ?? profile.startingMood ?? '刚刚开始',
-    health: profile.startingHealth ?? 100,
-    stamina: profile.startingStamina ?? 80,
+    health: Math.min(profile.maxHealth ?? profile.startingHealth ?? 100, profile.startingHealth ?? profile.maxHealth ?? 100),
+    maxHealth: Math.max(1, profile.maxHealth ?? profile.startingHealth ?? 100),
+    stamina: Math.min(profile.maxStamina ?? profile.startingStamina ?? 80, profile.startingStamina ?? profile.maxStamina ?? 80),
+    maxStamina: Math.max(1, profile.maxStamina ?? profile.startingStamina ?? 80),
     money: profile.startingMoney ?? 0,
     reputation: profile.startingReputation ?? 0,
     traits: [...(setup.player?.traits ?? [])],
@@ -374,6 +395,7 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
   const next: GameState = {
     ...base,
     player,
+    npcs: freshNpcs,
     world: {
       ...base.world,
       day: 1,

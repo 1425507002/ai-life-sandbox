@@ -15,6 +15,20 @@ export function validateIncidentCandidate(candidate: unknown, state: GameState):
   return true
 }
 
+export function validateScheduledEvent(event: unknown, state: GameState): event is ScheduledEvent {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return false
+  const item = event as Partial<ScheduledEvent>
+  if (typeof item.id !== 'string' || item.id.trim().length < 2 || item.id.length > 120) return false
+  if (!Number.isInteger(item.dueTurn) || (item.dueTurn ?? 0) <= state.turn || (item.dueTurn ?? 0) > state.turn + 100) return false
+  if (typeof item.title !== 'string' || item.title.trim().length < 2 || item.title.length > 100) return false
+  if (typeof item.body !== 'string' || item.body.trim().length < 2 || item.body.length > 420) return false
+  if (!Array.isArray(item.tags) || item.tags.length > 5 || !item.tags.every((tag) => typeof tag === 'string' && tag.trim().length <= 24)) return false
+  if (item.fact !== undefined && (typeof item.fact !== 'string' || item.fact.length > 200)) return false
+  if (item.npcId !== undefined && !state.npcs.some((npc) => npc.id === item.npcId)) return false
+  if (item.relationshipDelta !== undefined && (!Number.isInteger(item.relationshipDelta) || item.relationshipDelta < -2 || item.relationshipDelta > 2)) return false
+  return true
+}
+
 function incidentId(candidate: IncidentCandidate, turn: number) {
   const slug = candidate.title.replace(/[^\u4e00-\u9fff\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 36) || 'event'
   return `ai-incident-${turn}-${slug}`
