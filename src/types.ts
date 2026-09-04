@@ -18,7 +18,9 @@ export interface AgeStageProfile {
   roles?: string[]
   professions?: string[]
   startingHealth?: number
+  maxHealth?: number
   startingStamina?: number
+  maxStamina?: number
   startingMoney?: number
   startingReputation?: number
   startingInventory?: string[]
@@ -96,7 +98,9 @@ export interface PlayerState {
   profession: string
   mood: string
   health: number
+  maxHealth: number
   stamina: number
+  maxStamina: number
   money: number
   reputation: number
   traits: string[]
@@ -111,6 +115,7 @@ export interface NpcState {
   relationship: number
   lastInteraction: string
   status: string
+  met?: boolean
   schedule?: string[]
 }
 

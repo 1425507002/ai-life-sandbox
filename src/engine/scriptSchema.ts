@@ -72,6 +72,12 @@ export function validateScriptPackage(input: unknown): { valid: boolean; errors:
   if (input.characterCreation !== undefined) {
     const creation = input.characterCreation
     if (!isRecord(creation) || typeof creation.enabled !== 'boolean' || !Array.isArray(creation.roles) || !Array.isArray(creation.professions) || !Array.isArray(creation.traits)) errors.push('characterCreation 字段格式错误')
+    if (isRecord(creation) && isRecord(creation.ageStageProfiles)) Object.entries(creation.ageStageProfiles).forEach(([stage, profile]) => {
+      if (!AGE_STAGES.includes(stage) || !isRecord(profile)) return
+      for (const key of ['startingHealth', 'maxHealth', 'startingStamina', 'maxStamina']) if (profile[key] !== undefined && !isNumber(profile[key])) errors.push(`characterCreation.ageStageProfiles.${stage}.${key} 必须是数字`)
+      if (isNumber(profile.maxHealth) && profile.maxHealth <= 0) errors.push(`characterCreation.ageStageProfiles.${stage}.maxHealth 必须大于 0`)
+      if (isNumber(profile.maxStamina) && profile.maxStamina <= 0) errors.push(`characterCreation.ageStageProfiles.${stage}.maxStamina 必须大于 0`)
+    })
   }
   if (input.rules !== undefined && (!isRecord(input.rules) || Object.values(input.rules).some((rule) => !isRecord(rule) || !isString(rule.id)))) errors.push('rules 必须是以规则 ID 为键的对象')
   if (input.rules !== undefined && isRecord(input.rules)) {

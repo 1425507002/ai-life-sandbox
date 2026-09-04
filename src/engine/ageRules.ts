@@ -9,11 +9,11 @@ const DEFAULT_AGE_STAGES: AgeStageDefinition[] = [
 ]
 
 const DEFAULT_PROFILES: Record<AgeStage, AgeStageProfile> = {
-  baby: { startingHealth: 70, startingStamina: 25, startingMoney: 0, startingReputation: 0, startingInventory: [], startingMood: '需要照料' },
-  child: { startingHealth: 82, startingStamina: 40, startingMoney: 2, startingReputation: 0, startingInventory: [], startingMood: '精力充沛' },
-  teen: { startingHealth: 88, startingStamina: 60, startingMoney: 8, startingReputation: 0, startingInventory: ['简易随身包'], startingMood: '正在寻找方向' },
-  adult: { startingHealth: 100, startingStamina: 80, startingMoney: 20, startingReputation: 0, startingInventory: ['简易随身包'], startingMood: '刚刚开始' },
-  elder: { startingHealth: 78, startingStamina: 45, startingMoney: 30, startingReputation: 0, startingInventory: ['旧怀表'], startingMood: '沉静' },
+  baby: { startingHealth: 30, maxHealth: 30, startingStamina: 25, maxStamina: 25, startingMoney: 0, startingReputation: 0, startingInventory: [], startingMood: '需要照料' },
+  child: { startingHealth: 65, maxHealth: 65, startingStamina: 45, maxStamina: 45, startingMoney: 2, startingReputation: 0, startingInventory: [], startingMood: '精力充沛' },
+  teen: { startingHealth: 85, maxHealth: 85, startingStamina: 65, maxStamina: 65, startingMoney: 8, startingReputation: 0, startingInventory: ['简易随身包'], startingMood: '正在寻找方向' },
+  adult: { startingHealth: 100, maxHealth: 100, startingStamina: 80, maxStamina: 80, startingMoney: 20, startingReputation: 0, startingInventory: ['简易随身包'], startingMood: '刚刚开始' },
+  elder: { startingHealth: 85, maxHealth: 85, startingStamina: 55, maxStamina: 55, startingMoney: 30, startingReputation: 0, startingInventory: ['旧怀表'], startingMood: '沉静' },
 }
 
 export function getAgeStageDefinitions(script: ScriptPackage): AgeStageDefinition[] {
