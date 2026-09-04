@@ -91,6 +91,17 @@ describe('checkProviderConnection', () => {
     expect(body).not.toContain('晨雾集市')
   })
 
+  it('rejects AI action copy that leaks an unknown person or place', async () => {
+    const script = getScript('western-world')
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '行动文案隐私测试' } })
+    const local = state.suggestedActions.find((action) => action.ruleId === 'market')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [{ ...local, title: '去找米拉了解晨雾集市', description: '询问米拉最近的消息。' }] }) } }] }), { status: 200 })))
+
+    const result = await generateActionCandidates(provider, { state, script, localCandidates: local ? [local] : [] })
+
+    expect(result).toBeNull()
+  })
+
   it('keeps local action costs authoritative over AI copy', async () => {
     const script = getScript('western-world')
     const state = buildInitialState(script)

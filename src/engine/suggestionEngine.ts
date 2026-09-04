@@ -79,6 +79,34 @@ const LOCAL_VARIANTS: Record<string, ActionCopy[]> = {
   ],
 }
 
+const HIDDEN_LOCATION_COPIES: Record<string, ActionCopy> = {
+  market: { title: '沿着人声走一段', description: '从已知生活圈边缘出发，跟着远处的人声走走，先确认一条安全路线。' },
+  smith: { title: '寻找附近的手艺活', description: '沿着熟悉的街道观察工坊和烟火，看看有没有适合你的短工机会。' },
+  forest: { title: '沿北边小路探索', description: '只走到生活圈边缘，确认路况和安全界线，不贸然进入未知区域。' },
+  dock: { title: '沿潮湿石路走走', description: '顺着风和水汽传来的方向走一段，留意附近是否有可以落脚的地方。' },
+  rhea: { title: '找一份附近的帮工', description: '在已知生活圈里打听一份短时帮工，先从认识工作环境开始。' },
+  tavern: { title: '去人多的地方听听', description: '寻找一个有人交谈的公共场所，先听听这里的人都在谈什么。' },
+  lighthouse: { title: '沿海风方向探路', description: '沿着熟悉路线向海风更强的地方走一段，确认是否存在新的道路。' },
+}
+
+const NPC_BY_RULE: Record<string, string> = {
+  market: 'mira',
+  smith: 'oren',
+  forest: 'sela',
+  dock: 'jon',
+  rhea: 'rhea',
+  lighthouse: 'elna',
+}
+
+const HIDDEN_NPC_COPIES: Record<string, ActionCopy> = {
+  market: { title: '在集市看看', description: '在已经知道的集市边缘走走，留意摊位、货物和人们正在讨论的事情。' },
+  smith: { title: '在工坊附近看看', description: '在已经知道的工坊附近观察一会儿，先确认这里需要什么样的手艺。' },
+  forest: { title: '在雾林边缘找找', description: '只在已经知道的雾林边缘寻找常见药草，不贸然深入。' },
+  dock: { title: '在码头附近看看', description: '在已经知道的码头观察一会儿，留意正在装卸的货物和可以做的短工。' },
+  rhea: { title: '在船具店附近看看', description: '在已经知道的船具店附近观察一会儿，先熟悉这里的工作和规矩。' },
+  lighthouse: { title: '在灯塔附近看看', description: '在已经知道的灯塔外围观察一会儿，先确认潮汐和礁石路况。' },
+}
+
 function copyFor(action: SuggestedAction, variantIndex: number): ActionCopy {
   const variants = LOCAL_VARIANTS[action.ruleId ?? action.id] ?? FALLBACK_VARIANTS.map((variant) => ({
     title: `${action.title} · ${variant.title}`,
@@ -94,7 +122,10 @@ export function generateSuggestedActions(state: GameState, script: ScriptPackage
   const source = [...new Map([...ageActions, ...sourceState.suggestedActions].map((action) => [action.ruleId ?? action.id, action])).values()]
     .filter((action) => {
       const rule = script.rules?.[action.ruleId ?? action.id]
-      return isAgeAllowed(rule, state, script) && (!rule?.allowedMapIds?.length || !state.world.mapId || rule.allowedMapIds.includes(state.world.mapId))
+      const target = rule?.revealsLocationId ? state.locations.find((location) => location.id === rule.revealsLocationId) : undefined
+      const namedLocation = state.locations.find((location) => action.location === location.name)
+      const knownDestination = target ? true : !namedLocation || namedLocation.discovered !== false
+      return isAgeAllowed(rule, state, script) && knownDestination && (!rule?.allowedMapIds?.length || !state.world.mapId || rule.allowedMapIds.includes(state.world.mapId))
     })
   if (!source.length) return []
   const latestAction = state.history.find((event) => event.ruleId || (event.actionId && !event.actionId.startsWith('freeform:')))
@@ -103,14 +134,21 @@ export function generateSuggestedActions(state: GameState, script: ScriptPackage
   const generatedTitles = new Set<string>()
   const generated = source.map((action, index) => {
     const ruleId = action.ruleId ?? action.id
+    const target = script.rules?.[ruleId]?.revealsLocationId ? state.locations.find((location) => location.id === script.rules?.[ruleId]?.revealsLocationId) : undefined
+    const destinationUnknown = target?.discovered === false
+    const npcUnknown = NPC_BY_RULE[ruleId] ? state.npcs.find((npc) => npc.id === NPC_BY_RULE[ruleId])?.met !== true : false
     let variantIndex = Math.max(0, state.turn - 1 + index)
-    let copy = copyFor({ ...action, ruleId }, variantIndex)
+    let copy = destinationUnknown
+      ? HIDDEN_LOCATION_COPIES[ruleId] ?? { title: '探索生活圈边缘', description: '沿着已知生活圈边缘走一段，确认新的道路和安全界线。' }
+      : npcUnknown
+        ? HIDDEN_NPC_COPIES[ruleId] ?? { title: '在附近观察一会儿', description: '在已经知道的地方观察一会儿，先熟悉环境再决定下一步。' }
+        : copyFor({ ...action, ruleId }, variantIndex)
     while ((recentTitles.has(copy.title) || generatedTitles.has(copy.title)) && variantIndex < state.turn + 24) {
       variantIndex += 1
-      copy = copyFor({ ...action, ruleId }, variantIndex)
+      copy = destinationUnknown || npcUnknown ? { ...copy, title: `${copy.title} · 第 ${variantIndex + 1} 段` } : copyFor({ ...action, ruleId }, variantIndex)
     }
     generatedTitles.add(copy.title)
-    return { ...action, id: `${script.manifest.id}:${ruleId}:${variantIndex}`, ruleId, title: copy.title, description: copy.description }
+    return { ...action, ...(destinationUnknown ? { location: '未知方向' } : {}), id: `${script.manifest.id}:${ruleId}:${variantIndex}`, ruleId, title: copy.title, description: copy.description }
   })
   const fresh = generated.filter((action) => action.ruleId !== latestRuleId && !recentTitles.has(action.title))
   if (fresh.length >= Math.min(3, generated.length)) return fresh

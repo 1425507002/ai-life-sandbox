@@ -1,9 +1,10 @@
-import type { ActionResult, AgeStage, GameState, MemoryState, NewLifeSetup, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
+import type { ActionResult, AgeStage, GameState, MapDiscoveryPolicy, MemoryState, NewLifeSetup, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
 import { generateSuggestedActions } from './suggestionEngine'
 import { compressMemory } from './memory'
 import { blockedAgeMessage, clampAgeToStage, getAgeOptions, getAgeStageDefinition, getAgeStageForAge, getAgeStageProfile, isAgeAllowed } from './ageRules'
 
 const pad = (value: number) => value.toString().padStart(2, '0')
+const AMBIGUOUS_ACTION = '__ambiguous_action__'
 
 function advanceTime(state: GameState, minutes: number) {
   const [period, clock] = state.world.time.split(' · ')
@@ -20,6 +21,10 @@ function cloneState(state: GameState): GameState {
   return structuredClone(state)
 }
 
+function mapDiscoveryPolicy(state: GameState, script: ScriptPackage): MapDiscoveryPolicy | undefined {
+  return script.maps?.find((map) => map.id === state.world.mapId)?.discoveryPolicy ?? script.world.mapDiscovery
+}
+
 function recoverHealth(state: GameState, amount: number) {
   state.player.health = Math.min(state.player.maxHealth, state.player.health + amount)
 }
@@ -28,8 +33,10 @@ function recoverStamina(state: GameState, amount: number) {
   state.player.stamina = Math.min(state.player.maxStamina, state.player.stamina + amount)
 }
 
-function revealLocation(state: GameState, locationId: string | undefined, source: NonNullable<GameState['locations'][number]['discoverySource']>) {
+function revealLocation(state: GameState, script: ScriptPackage, locationId: string | undefined, source: NonNullable<GameState['locations'][number]['discoverySource']>) {
   if (!locationId) return undefined
+  const policy = mapDiscoveryPolicy(state, script)
+  if (policy && !policy.allowedSources.includes(source)) return undefined
   const location = state.locations.find((item) => item.id === locationId)
   if (!location || location.discovered !== false) return undefined
   location.discovered = true
@@ -85,21 +92,25 @@ function scheduleRuleEvent(next: GameState, script: ScriptPackage, ruleId: strin
   const templateId = script.rules?.[ruleId]?.delayedEventId
   const template = templateId ? script.events?.find((event) => event.id === templateId) : undefined
   if (!template) return
+  if (template.npcId && !next.npcs.some((npc) => npc.id === template.npcId && npc.met === true)) return
   const scheduled = next.scheduledEvents ?? []
   if (scheduled.some((event) => event.id === template.id)) return
   next.scheduledEvents = [...scheduled, { ...template, dueTurn: next.turn + template.dueTurn }]
 }
 
-function processDueEvents(next: GameState) {
+function processDueEvents(next: GameState, script: ScriptPackage, revealedCount = 0) {
+  const maxNewLocations = mapDiscoveryPolicy(next, script)?.maxNewLocationsPerAction ?? 1
+  let availableRevealSlots = Math.max(0, maxNewLocations - revealedCount)
   const due = (next.scheduledEvents ?? []).filter((event) => event.dueTurn <= next.turn)
   next.scheduledEvents = (next.scheduledEvents ?? []).filter((event) => event.dueTurn > next.turn)
   due.forEach((event) => {
+    if (event.npcId && !next.npcs.some((npc) => npc.id === event.npcId && npc.met === true)) return
     if (event.fact) next.knownFacts = [...new Set([...next.knownFacts, event.fact])]
     if (event.npcId && event.relationshipDelta) {
       const npc = next.npcs.find((item) => item.id === event.npcId)
-      if (npc) { npc.relationship += event.relationshipDelta; npc.lastInteraction = event.title; npc.met = true }
+      if (npc && npc.met === true) { npc.relationship += event.relationshipDelta; npc.lastInteraction = event.title }
     }
-    revealLocation(next, event.revealsLocationId, 'event')
+    if (availableRevealSlots > 0 && revealLocation(next, script, event.revealsLocationId, 'event')) availableRevealSlots -= 1
     next.world.narrative.unshift(event.body)
     next.world.currentFocus = event.title
     next.history.unshift({ id: `event-${next.turn}-${event.id}`, turn: next.turn, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: event.title, body: event.body, outcome: 'success', tags: [...event.tags, '延迟事件'] })
@@ -107,8 +118,9 @@ function processDueEvents(next: GameState) {
 }
 
 function advanceNpcSchedules(next: GameState) {
-  if (!next.npcs.length) return
-  const npc = next.npcs[next.turn % next.npcs.length]
+  const knownNpcs = next.npcs.filter((npc) => npc.met === true)
+  if (!knownNpcs.length) return
+  const npc = knownNpcs[next.turn % knownNpcs.length]
   if (!npc.schedule?.length) return
   const status = npc.schedule[(next.turn + 1) % npc.schedule.length]
   npc.status = status
@@ -124,17 +136,19 @@ function findAction(state: GameState, input: string): SuggestedAction | string |
   const exact = state.suggestedActions.find((action) => action.title.toLowerCase() === normalized)
   if (exact) return exact
   const keywords: Record<string, string[]> = {
-    market: ['集市', '市场', '早市', '布料'],
+    rhea: ['瑞娅', '船具', '关店'],
+    lighthouse: ['灯塔', '钥匙', '艾尔娜'],
+    tavern: ['酒馆', '喝酒', '传闻', '消息'],
+    dock: ['码头', '西堤', '搬运', '货船'],
     smith: ['铁匠', '奥伦', '打铁', '短工'],
+    market: ['集市', '市场', '早市', '布料'],
     tidy: ['整理', '房间', '打扫', '收拾'],
     forest: ['雾林', '采药', '北坡', '草药'],
-    dock: ['码头', '西堤', '搬运', '货船'],
-    rhea: ['瑞娅', '船具', '关店'],
-    tavern: ['酒馆', '喝酒', '传闻', '消息'],
-    lighthouse: ['灯塔', '钥匙', '艾尔娜'],
   }
-  const match = Object.entries(keywords).find(([, terms]) => terms.some((term) => normalized.includes(term)))
-  return state.suggestedActions.find((action) => (action.ruleId ?? action.id) === match?.[0]) ?? match?.[0]
+  const matches = Object.entries(keywords).filter(([, terms]) => terms.some((term) => normalized.includes(term)))
+  if (matches.length > 1) return AMBIGUOUS_ACTION
+  if (matches.length === 0) return undefined
+  return state.suggestedActions.find((action) => (action.ruleId ?? action.id) === matches[0][0]) ?? matches[0][0]
 }
 
 function genericOutcome(state: GameState, input: string, script: ScriptPackage): ActionResult {
@@ -148,7 +162,7 @@ function genericOutcome(state: GameState, input: string, script: ScriptPackage):
   next.world.currentFocus = `继续确认：${input}`
   next.history.unshift({ id: `e-${next.turn}-freeform`, turn: next.turn, actionId: `freeform:${input.toLowerCase()}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
   advanceNpcSchedules(next)
-  processDueEvents(next)
+  processDueEvents(next, script)
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
   return { outcome: 'unknown', title: '事情还没有定论', narrative: next.world.narrative, feedback: '这个行动可以开始，但现在更像是一个需要继续观察的方向。', timeLabel: '约 25 分钟', deltas: ['精力 -3', '新增一个待确认事项'], stateDiff: stateDiff(state, next), state: next }
@@ -244,6 +258,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   if (!cleanInput) return { outcome: 'refused', title: '还没有行动', narrative: ['先写下你想做的事，世界才知道该如何回应。'], feedback: '请输入一个具体行动。', timeLabel: '未推进时间', deltas: [], state }
 
   const match = findAction(state, cleanInput)
+  if (match === AMBIGUOUS_ACTION) return { outcome: 'refused', title: '请只选择一个行动', narrative: ['这句话同时包含了多个已知行动目标，世界暂时无法判断你想先做哪一件事。', '请选择一个行动卡，或只描述一个明确目标；这次没有推进时间，也没有改变状态。'], feedback: '一次只执行一个明确行动。', timeLabel: '未推进时间', deltas: ['行动目标不明确'], state }
   if (typeof match !== 'object' || !match) {
     if (typeof match === 'string') {
       const rule = script.rules?.[match]
@@ -288,6 +303,8 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     narrative = ageResult.narrative
     deltas.push(...ageResult.deltas.filter((delta) => !deltas.includes(delta)))
   } else if (actionRule === 'market') {
+    const npc = next.npcs.find((item) => item.id === 'mira')
+    if (npc) { npc.met = true; npc.lastInteraction = '今天在集市第一次打照面' }
     next.player.reputation += 1
     next.world.location = '晨雾镇 · 晨雾集市'
     next.world.currentFocus = '集市里有人在谈论旧桥的修缮'
@@ -320,6 +337,8 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     next.inventory.push('常见药草 ×2')
     deltas.push('获得物品：常见药草 ×2', '状态 -3', '风险兑现：轻微擦伤')
   } else if (actionRule === 'dock') {
+    const npc = next.npcs.find((item) => item.id === 'jon')
+    if (npc) { npc.met = true; npc.lastInteraction = '今天在西堤码头聊过短工' }
     next.world.location = '灰潮港 · 西堤码头'
     next.world.currentFocus = '西堤有人愿意在明早给你一份短工'
     narrative = ['西堤的湿石路还没干。乔恩一边把麻袋拖进仓棚，一边用眼神示意你别靠近那艘没有旗子的旧货船。', '他没有解释太多，只说明早有一批木箱需要搬运。如果你愿意早到，可以替一个临时缺席的人顶上。']
@@ -347,14 +366,14 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   }
 
   next.world.narrative = narrative
-  const revealedLocation = revealLocation(next, rule?.revealsLocationId, 'exploration')
+  const revealedLocation = revealLocation(next, script, rule?.revealsLocationId, 'exploration')
   if (revealedLocation) {
     next.knownFacts = [...new Set([...next.knownFacts, `你亲自抵达了${revealedLocation}`])]
     deltas.push(`发现地点：${revealedLocation}`)
   }
   scheduleRuleEvent(next, script, actionRule)
   advanceNpcSchedules(next)
-  processDueEvents(next)
+  processDueEvents(next, script, revealedLocation ? 1 : 0)
   next.history.unshift({ id: `e-${next.turn}-${match.id}`, turn: next.turn, actionId: match.id, ruleId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
@@ -428,7 +447,8 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
       time: '清晨 · 07:00',
       narrative: [...(selectedMap?.opening ?? script.world.opening)],
       currentFocus: '决定今天从哪里开始',
-      publicNews: [...base.world.publicNews],
+      headline: selectedMap?.opening[0] ?? script.world.opening[0] ?? '',
+      publicNews: [],
     },
     history: [],
     inventory: [...(profile.startingInventory ?? [])],

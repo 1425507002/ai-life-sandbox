@@ -179,7 +179,7 @@ describe('game store', () => {
     vi.stubGlobal('fetch', vi.fn(async (_input: unknown, init?: { body?: unknown }) => {
       const payload = JSON.parse(String(init?.body)) as { messages?: Array<{ content?: string }> }
       const system = payload.messages?.[0]?.content ?? ''
-      if (system.includes('突发事件候选助手')) return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: { title: '米拉送来一封短笺', body: '米拉让邻居捎来一封短笺，说她在集市听见了新的桥讯。', kind: 'encounter', tags: ['人物'], dueInTurns: 1, npcId: 'mira', relationshipDelta: 1 } }) } }] }), { status: 200 })
+      if (system.includes('突发事件候选助手')) return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: { title: '窗外传来三声铃', body: '夜风里传来三声短促的铃响，附近的人都停下了手里的事。', kind: 'encounter', tags: ['环境'], dueInTurns: 1 } }) } }] }), { status: 200 })
       if (system.includes('行动候选助手')) return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [] }) } }] }), { status: 200 })
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['第一段', '第二段'] }) } }] }), { status: 200 })
     }))
@@ -189,7 +189,7 @@ describe('game store', () => {
     randomSpy.mockRestore()
 
     const session = useGameStore.getState().sessions[useGameStore.getState().activeLifeId]
-    expect(session.state.scheduledEvents?.some((event) => event.title === '米拉送来一封短笺')).toBe(true)
+    expect(session.state.scheduledEvents?.some((event) => event.title === '窗外传来三声铃')).toBe(true)
     expect(session.state.player.money).toBe(20)
   })
 })

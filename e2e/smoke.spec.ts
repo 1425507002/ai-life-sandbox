@@ -45,7 +45,7 @@ test('desktop core life loop and settings', async ({ page }, testInfo) => {
   await page.locator('.nav-item').filter({ hasText: '设置' }).click()
   await page.locator('.action-mode-option').filter({ hasText: '选择优先' }).click()
   await page.locator('.nav-item').filter({ hasText: '当前场景' }).click()
-  await page.getByRole('button', { name: /帮瑞娅整理缆绳/ }).click()
+  await page.getByRole('button', { name: /找一份附近的帮工/ }).click()
   await page.locator('.nav-item').filter({ hasText: '地图' }).click()
   await expect(page.locator('.location-row')).toHaveCount(2)
   await expect(page.locator('.location-list').getByText('船具店', { exact: true })).toBeVisible()

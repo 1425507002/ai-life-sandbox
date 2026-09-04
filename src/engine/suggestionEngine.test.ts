@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInitialState } from './actionEngine'
+import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { generateSuggestedActions } from './suggestionEngine'
 import { getScript } from '../data/scripts'
 
@@ -39,5 +39,29 @@ describe('suggestion engine', () => {
     const nextState = { ...state, history: [{ id: 'test-used', actionId: action.id, ruleId: action.ruleId, date: '', title: action.title, body: '', outcome: 'success' as const, tags: [] }] }
 
     expect(generateSuggestedActions(nextState, singleActionScript)).toHaveLength(1)
+  })
+
+  it('keeps exploration actions available without leaking undiscovered place names', () => {
+    const script = getScript('western-world')
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '未知地点行动测试' } })
+    const actions = generateSuggestedActions(state, script)
+    const copy = actions.map((action) => `${action.title} ${action.description} ${action.location}`).join(' ')
+
+    expect(actions.some((action) => action.ruleId === 'market')).toBe(true)
+    expect(copy).not.toContain('晨雾集市')
+    expect(copy).not.toContain('奥伦铁匠铺')
+    expect(copy).not.toContain('北坡雾林')
+    expect(actions.filter((action) => action.location === '未知方向').length).toBeGreaterThan(0)
+  })
+
+  it('does not name an NPC before the player has met them', () => {
+    const script = getScript('western-world')
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '未知人物行动测试' } })
+    state.locations = state.locations.map((location) => location.id === 'market' ? { ...location, discovered: true } : location)
+    const actions = generateSuggestedActions(state, script)
+    const marketAction = actions.find((action) => action.ruleId === 'market')
+
+    expect(marketAction?.title).toBe('在集市看看')
+    expect(`${marketAction?.title} ${marketAction?.description}`).not.toContain('米拉')
   })
 })

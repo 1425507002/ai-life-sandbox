@@ -137,6 +137,15 @@ export interface ActionCandidatesRequest {
   localCandidates: SuggestedAction[]
 }
 
+function mentionsHiddenWorldEntity(action: SuggestedAction, state: GameState) {
+  const copy = `${action.title} ${action.description}`
+  const hiddenNames = [
+    ...state.npcs.filter((npc) => npc.met !== true).map((npc) => npc.name),
+    ...state.locations.filter((location) => location.discovered === false).map((location) => location.name),
+  ].filter((name) => name.trim().length > 1)
+  return hiddenNames.some((name) => copy.includes(name))
+}
+
 export async function generateActionCandidates(config: ProviderConfig, request: ActionCandidatesRequest): Promise<SuggestedAction[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
@@ -162,7 +171,7 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
       if (!validateSuggestedAction(item)) return false
       const action = item as SuggestedAction
       const ruleId = action.ruleId ?? action.id
-      if (!ruleIds.has(ruleId) || seen.has(action.title)) return false
+      if (!ruleIds.has(ruleId) || seen.has(action.title) || mentionsHiddenWorldEntity(action, request.state)) return false
       seen.add(action.title)
       return true
     }).map((action, index) => {
@@ -191,7 +200,7 @@ export async function generateIncident(config: ProviderConfig, request: Incident
       temperature: 0.9,
       messages: [
         { role: 'system', content: '你是 AI 人生模拟器的突发事件候选助手。根据给定的有限上下文，偶尔提出一个小型、可延后的生活事件；也可以返回 null。绝对不能直接修改金钱、物品、健康、时间或事实。地图必须遵守发现规则：不能凭空创造地点；如事件确实带来新地点，只能从 discoverableLocationIds 中选择一个已有 locationId，并填入 revealsLocationId。discoverableLocationIds 只有白名单 ID，不代表玩家已经知道地点；不要猜测或写出未知地点名称、类型或位置。只能返回 JSON：{"incident":null} 或 {"incident":{"title":"","body":"","kind":"opportunity|complication|encounter|weather","tags":[],"dueInTurns":1,"npcId":"可选","relationshipDelta":0,"revealsLocationId":"可选地点ID"}}。标题不超过100字，正文不超过420字，最多4个标签，关系变化只能是-2到2。' },
-        { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, mapDiscovery: request.script.world.mapDiscovery, context: buildMemoryPacket(request.state), npcs: request.state.npcs.filter((npc) => npc.met !== false).slice(0, 8).map((npc) => ({ id: npc.id, name: npc.name, role: npc.role, relationship: npc.relationship })), discoverableLocationIds: request.state.locations.filter((location) => location.discovered === false).slice(0, 12).map((location) => location.id) }) },
+        { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, mapDiscovery: request.script.world.mapDiscovery, context: buildMemoryPacket(request.state), npcs: request.state.npcs.filter((npc) => npc.met === true).slice(0, 8).map((npc) => ({ id: npc.id, name: npc.name, role: npc.role, relationship: npc.relationship })), discoverableLocationIds: request.state.locations.filter((location) => location.discovered === false).slice(0, 12).map((location) => location.id) }) },
       ],
       response_format: { type: 'json_object' },
     })
@@ -201,7 +210,7 @@ export async function generateIncident(config: ProviderConfig, request: Incident
     if (!content) return null
     const parsed = JSON.parse(content) as { incident?: unknown }
     if (parsed.incident === null || parsed.incident === undefined) return null
-    return validateIncidentCandidate(parsed.incident, request.state) ? parsed.incident : null
+    return validateIncidentCandidate(parsed.incident, request.state, request.script) ? parsed.incident : null
   } catch {
     return null
   }

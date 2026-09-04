@@ -163,9 +163,24 @@ describe('action engine', () => {
   it('hides NPCs until a real interaction marks them as met', () => {
     const state = buildNewLifeState(harborScript, { mapId: 'tide-harbor', ageStage: 'adult', player: { name: '初次相遇测试' } })
     expect(state.npcs.every((npc) => npc.met === false)).toBe(true)
-    const result = resolveAction(state, '帮瑞娅整理缆绳', harborScript)
+    const rheaAction = state.suggestedActions.find((action) => action.ruleId === 'rhea')
+    expect(rheaAction?.title).toBe('找一份附近的帮工')
+    const result = resolveAction(state, rheaAction?.title ?? '', harborScript)
     expect(result.state.npcs.find((npc) => npc.id === 'rhea')?.met).toBe(true)
     expect(result.state.npcs.find((npc) => npc.id === 'jon')?.met).toBe(false)
+  })
+
+  it('starts a new life without carrying old news or headline details', () => {
+    const state = buildNewLifeState(harborScript, { mapId: 'tide-harbor', ageStage: 'baby', player: { name: '新生儿状态测试' } })
+
+    expect(state.world.day).toBe(1)
+    expect(state.world.time).toBe('清晨 · 07:00')
+    expect(state.world.publicNews).toEqual([])
+    expect(state.world.headline).toBe('海风把盐味送进半开的窗。')
+    expect(state.knownFacts).toEqual([])
+
+    const firstAction = resolveAction(buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '陌生人新闻测试' } }), '整理房间', script)
+    expect(firstAction.state.world.publicNews).toEqual([])
   })
 
   it('expands the map only after a rule explicitly reveals a location', () => {
@@ -186,5 +201,27 @@ describe('action engine', () => {
     const result = resolveAction(state, '整理房间', script)
     expect(result.state.locations.find((location) => location.id === 'market')?.discovered).toBe(true)
     expect(result.state.history.some((event) => event.title === '邻居提起集市')).toBe(true)
+  })
+
+  it('limits one action to one newly revealed location', () => {
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '单次解锁测试' } })
+    state.scheduledEvents = [
+      { id: 'market-event', dueTurn: 1, title: '有人提起集市', body: '有人提起集市的消息。', tags: ['传闻'], revealsLocationId: 'market' },
+      { id: 'forge-event', dueTurn: 1, title: '有人提起铁匠铺', body: '有人提起铁匠铺的消息。', tags: ['传闻'], revealsLocationId: 'forge' },
+    ]
+
+    const result = resolveAction(state, '整理房间', script)
+
+    expect(result.state.locations.find((location) => location.id === 'market')?.discovered).toBe(true)
+    expect(result.state.locations.find((location) => location.id === 'forge')?.discovered).toBe(false)
+  })
+
+  it('does not silently choose between two specific free-form destinations', () => {
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '歧义行动测试' } })
+    const result = resolveAction(state, '先去集市再去铁匠铺', script)
+
+    expect(result.outcome).toBe('refused')
+    expect(result.state.turn).toBe(state.turn)
+    expect(result.state.world.location).toBe(state.world.location)
   })
 })

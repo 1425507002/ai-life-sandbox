@@ -124,7 +124,7 @@ function normalizeSavedState(rawState: GameState, script: ScriptPackage, mapId?:
     turn: Number.isFinite(rawState.turn) ? Math.max(0, rawState.turn) : 0,
   }
   state.scheduledEvents = Array.isArray(rawState.scheduledEvents)
-    ? rawState.scheduledEvents.filter((event) => validateScheduledEvent(event, state)).slice(0, 8)
+    ? rawState.scheduledEvents.filter((event) => validateScheduledEvent(event, state, script)).slice(0, 8)
     : []
   state.suggestedActions = generateSuggestedActions(state, script)
   return state
@@ -271,7 +271,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }),
       requestIncident ? generateIncident(providerConfig, { state: result.state, script }) : Promise.resolve(null),
     ]) : [null, null, null] as const
-    const incidentResult = maybeIncident ? queueIncidentCandidate(result.state, maybeIncident, script.incidentPolicy?.maxScheduled ?? 8) : null
+    const incidentResult = maybeIncident ? queueIncidentCandidate(result.state, maybeIncident, script.incidentPolicy?.maxScheduled ?? 8, script) : null
     const resolvedState = incidentResult?.state ?? result.state
     const finalState: GameState = {
       ...resolvedState,
