@@ -24,6 +24,7 @@ export interface ProviderConnectionResult {
 }
 
 const LOCAL_AI_PROXY_PATH = '/api/ai-proxy'
+export const AI_ENHANCEMENT_TIMEOUT_MS = 2200
 
 function normalizedEndpoint(endpoint: string) {
   return endpoint.trim().replace(/\/$/, '')
@@ -52,6 +53,22 @@ async function postCompletion(config: ProviderConfig, payload: Record<string, un
     signal,
     body: JSON.stringify(payload),
   })
+}
+
+export async function withModelTimeout<T>(task: (signal: AbortSignal) => Promise<T>, fallback: T, timeoutMs = AI_ENHANCEMENT_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      resolve(fallback)
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([task(controller.signal), timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 export async function checkProviderConnection(config: ProviderConfig): Promise<ProviderConnectionResult> {
@@ -112,7 +129,7 @@ export interface NarrationRequest {
   state: GameState
 }
 
-export async function generateNarration(config: ProviderConfig, request: NarrationRequest): Promise<string[] | null> {
+export async function generateNarration(config: ProviderConfig, request: NarrationRequest, signal?: AbortSignal): Promise<string[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
     const response = await postCompletion(config, {
@@ -123,7 +140,7 @@ export async function generateNarration(config: ProviderConfig, request: Narrati
           { role: 'user', content: JSON.stringify({ input: request.input, resolvedFacts: request.result, context: buildMemoryPacket(request.state) }) },
         ],
         response_format: { type: 'json_object' },
-      })
+      }, signal)
     if (!response.ok) return null
     const payload = await response.json()
     const content = extractCompletionText(payload)
@@ -152,7 +169,7 @@ function mentionsHiddenWorldEntity(action: SuggestedAction, state: GameState) {
   return hiddenNames.some((name) => copy.includes(name))
 }
 
-export async function generateActionCandidates(config: ProviderConfig, request: ActionCandidatesRequest): Promise<SuggestedAction[] | null> {
+export async function generateActionCandidates(config: ProviderConfig, request: ActionCandidatesRequest, signal?: AbortSignal): Promise<SuggestedAction[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
     const localCandidates = request.localCandidates.slice(0, 6)
@@ -165,7 +182,7 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
           { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, context: buildMemoryPacket(request.state), allowedRuleIds: [...ruleIds].slice(0, 12), localCandidates }) },
         ],
         response_format: { type: 'json_object' },
-      })
+      }, signal)
     if (!response.ok) return null
     const payload = await response.json()
     const content = extractCompletionText(payload)
@@ -199,7 +216,7 @@ export interface IncidentRequest {
   script: ScriptPackage
 }
 
-export async function generateIncident(config: ProviderConfig, request: IncidentRequest): Promise<IncidentCandidate | null> {
+export async function generateIncident(config: ProviderConfig, request: IncidentRequest, signal?: AbortSignal): Promise<IncidentCandidate | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
     const response = await postCompletion(config, {
@@ -210,7 +227,7 @@ export async function generateIncident(config: ProviderConfig, request: Incident
         { role: 'user', content: JSON.stringify({ script: request.script.manifest.title, mapDiscovery: request.script.world.mapDiscovery, context: buildMemoryPacket(request.state), npcs: request.state.npcs.filter((npc) => npc.met === true).slice(0, 8).map((npc) => ({ id: npc.id, name: npc.name, role: npc.role, relationship: npc.relationship })), discoverableLocationIds: request.state.locations.filter((location) => location.discovered === false).slice(0, 12).map((location) => location.id) }) },
       ],
       response_format: { type: 'json_object' },
-    })
+    }, signal)
     if (!response.ok) return null
     const payload = await response.json()
     const content = extractCompletionText(payload)

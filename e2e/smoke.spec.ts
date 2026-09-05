@@ -101,6 +101,24 @@ test('provider connection accepts compatible response shapes and explains unknow
   await expect(page.locator('.connection-result')).toContainText('返回字段：request_id, usage')
 })
 
+test('slow model enhancement never blocks local action settlement beyond five seconds', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only latency budget flow')
+  await page.route('**/api/ai-proxy/zhipu', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 6000))
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: '迟到的模型响应' } }] }) })
+  })
+  await page.goto('/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 Endpoint').fill('http://127.0.0.1:4175/api/ai-proxy/zhipu')
+  await page.getByLabel('模型 API Key').fill('latency-test-only')
+  await page.locator('.nav-item').filter({ hasText: '当前场景' }).click()
+  const startedAt = Date.now()
+  await page.locator('.action-card').first().click()
+  await expect(page.locator('.action-feedback')).toBeVisible()
+  expect(Date.now() - startedAt).toBeLessThan(5000)
+  await expect(page.locator('body')).toContainText('AI 服务未响应')
+})
+
 test('missing provider key never sends a model request', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider preflight')
   let providerRequests = 0

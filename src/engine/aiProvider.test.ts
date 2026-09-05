@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkProviderConnection, generateActionCandidates, generateIncident, generateNarration } from './aiProvider'
+import { AI_ENHANCEMENT_TIMEOUT_MS, checkProviderConnection, generateActionCandidates, generateIncident, generateNarration, withModelTimeout } from './aiProvider'
 import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { getScript } from '../data/scripts'
 import { classifyProviderFailure, extractCompletionText, parseJsonContent } from './providerContract'
@@ -9,6 +9,17 @@ const provider = { endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completi
 afterEach(() => vi.unstubAllGlobals())
 
 describe('checkProviderConnection', () => {
+  it('returns the local fallback when an enhancement request exceeds the gameplay budget', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = withModelTimeout(() => new Promise<string>(() => undefined), '本地结算')
+      await vi.advanceTimersByTimeAsync(AI_ENHANCEMENT_TIMEOUT_MS + 1)
+      await expect(pending).resolves.toBe('本地结算')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('保留智谱 1305 的服务器原文和业务错误码', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 1305, message: '该模型当前访问量过大，请您稍后再试' } }), { status: 429 })))
 

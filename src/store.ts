@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { buildInitialState, buildNewLifeState, resolveAction } from './engine/actionEngine'
-import { generateActionCandidates, generateIncident, generateNarration, ZHIPU_FLASH_PROVIDER } from './engine/aiProvider'
+import { generateActionCandidates, generateIncident, generateNarration, withModelTimeout, ZHIPU_FLASH_PROVIDER } from './engine/aiProvider'
 import { queueIncidentCandidate, validateScheduledEvent } from './engine/incidents'
 import { getAgeOptions, getAgeStageForAge, getAgeStageProfile } from './engine/ageRules'
 import { generateSuggestedActions } from './engine/suggestionEngine'
@@ -267,9 +267,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const result = resolveAction(session.state, input, script)
     const requestIncident = result.outcome !== 'refused' && Boolean(script.incidentPolicy?.enabled && providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim() && session.state.turn % 4 === 0 && Math.random() < (script.incidentPolicy?.chance ?? 0))
     const [maybeNarrative, maybeCandidates, maybeIncident] = result.outcome !== 'refused' ? await Promise.all([
-      generateNarration(providerConfig, { input, result: result.narrative, state: result.state }),
-      generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }),
-      requestIncident ? generateIncident(providerConfig, { state: result.state, script }) : Promise.resolve(null),
+      withModelTimeout((signal) => generateNarration(providerConfig, { input, result: result.narrative, state: result.state }, signal), null),
+      withModelTimeout((signal) => generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }, signal), null),
+      requestIncident ? withModelTimeout((signal) => generateIncident(providerConfig, { state: result.state, script }, signal), null) : Promise.resolve(null),
     ]) : [null, null, null] as const
     const incidentResult = maybeIncident ? queueIncidentCandidate(result.state, maybeIncident, script.incidentPolicy?.maxScheduled ?? 8, script) : null
     const resolvedState = incidentResult?.state ?? result.state
