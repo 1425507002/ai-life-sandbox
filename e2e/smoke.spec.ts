@@ -82,6 +82,19 @@ test('provider error details remain visible in settings', async ({ page }, testI
   await expect(page.locator('.connection-result')).not.toContainText('API Key 未通过验证')
 })
 
+test('missing provider key never sends a model request', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider preflight')
+  let providerRequests = 0
+  page.on('request', (request) => {
+    if (request.url().includes('/api/ai-proxy/')) providerRequests += 1
+  })
+  await page.goto('/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByRole('button', { name: '测试连接' }).click()
+  await expect(page.locator('.connection-result')).toContainText('请先在此页面填写 API Key')
+  expect(providerRequests).toBe(0)
+})
+
 test('a baby life does not start with adult NPC relationships', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only flow')
   await page.goto('/')
