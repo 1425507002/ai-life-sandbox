@@ -54,13 +54,39 @@ describe('checkProviderConnection', () => {
     expect(nonJson.message).toBe('服务器返回 HTTP 502，但没有提供可识别的错误详情。')
   })
 
+  it('does not reflect an API key from an upstream error', async () => {
+    const secret = 'test-secret-key-only'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 401, message: `invalid key ${secret}` } }), { status: 401 })))
+    const result = await checkProviderConnection({ ...provider, apiKey: secret })
+    expect(result.message).not.toContain(secret)
+    expect(result.message).toContain('[已隐藏]')
+  })
+
+  it('keeps a provider business code when HTTP 200 has no error message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 1305 } }), { status: 200 })))
+    const result = await checkProviderConnection(provider)
+    expect(result.message).toContain('业务错误码 1305')
+    expect(result.failure).toMatchObject({ kind: 'rate-limit', providerCode: 1305 })
+  })
+
   it('兼容常见的 completion 文本形状', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ text: '连接成功' }] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: [{ type: 'output_text', text: '连接' }, { type: 'text', text: '成功' }] } }] }), { status: 200 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: [{ type: 'output_text', text: '连接' }, { type: 'text', text: '成功' }] } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ output: { choices: [{ message: { content: '嵌套成功' } }] } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ content: [{ type: 'text', text: '原生成功' }] }), { status: 200 })))
 
     await expect(checkProviderConnection(provider)).resolves.toMatchObject({ ok: true })
     await expect(checkProviderConnection(provider)).resolves.toMatchObject({ ok: true })
+    await expect(checkProviderConnection(provider)).resolves.toMatchObject({ ok: true })
+    await expect(checkProviderConnection(provider)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('reports a non-JSON HTTP 200 response as a format failure without echoing it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('upstream body with private details', { status: 200 })))
+    const result = await checkProviderConnection(provider)
+    expect(result.message).toContain('非 JSON 响应')
+    expect(result.message).not.toContain('private details')
   })
 
   it('HTTP 200 携带服务商错误时不再伪装成格式错误', async () => {

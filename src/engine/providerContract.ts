@@ -46,13 +46,21 @@ function textFromContent(value: unknown): string | undefined {
   return undefined
 }
 
-export function normalizeProviderErrorPayload(value: unknown): ProviderErrorPayload {
+function redactSecrets(value: string | undefined, secrets: string[]) {
+  if (!value) return undefined
+  return secrets
+    .filter((secret) => secret.trim())
+    .sort((a, b) => b.length - a.length)
+    .reduce((text, secret) => text.split(secret).join('[已隐藏]'), value)
+}
+
+export function normalizeProviderErrorPayload(value: unknown, secrets: string[] = []): ProviderErrorPayload {
   if (!isRecord(value)) return {}
   const error = isRecord(value.error) ? value.error : undefined
   return {
-    error: error ? { code: error.code as string | number | undefined, message: cleanText(error.message) } : undefined,
+    error: error ? { code: error.code as string | number | undefined, message: redactSecrets(cleanText(error.message), secrets) } : undefined,
     code: value.code as string | number | undefined,
-    message: cleanText(value.message),
+    message: redactSecrets(cleanText(value.message), secrets),
   }
 }
 
@@ -83,8 +91,8 @@ export function classifyProviderFailure(status: number, payload: ProviderErrorPa
 }
 
 export function formatProviderFailure(info: ProviderFailureInfo) {
-  if (!info.providerMessage) return `服务器返回 HTTP ${info.httpStatus ?? 0}，但没有提供可识别的错误详情。`
   const codeNote = info.providerCode === undefined ? '' : `，业务错误码 ${info.providerCode}`
+  if (!info.providerMessage) return `服务器返回 HTTP ${info.httpStatus ?? 0}${codeNote}，但没有提供可识别的错误详情。`
   return `服务器反馈：${info.providerMessage}（HTTP ${info.httpStatus ?? 0}${codeNote}）`
 }
 

@@ -82,6 +82,25 @@ test('provider error details remain visible in settings', async ({ page }, testI
   await expect(page.locator('.connection-result')).not.toContainText('API Key 未通过验证')
 })
 
+test('provider connection accepts compatible response shapes and explains unknown 200 responses', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider proxy flow')
+  let responseBody: unknown = { output: { choices: [{ message: { content: [{ type: 'text', text: '连接成功' }] } }] } }
+  await page.route('**/api/ai-proxy/zhipu', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(responseBody) })
+  })
+  await page.goto('/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 Endpoint').fill('http://127.0.0.1:4175/api/ai-proxy/zhipu')
+  await page.getByLabel('模型 API Key').fill('test-key-only')
+  await page.getByRole('button', { name: '测试连接' }).click()
+  await expect(page.locator('.connection-result')).toContainText('连接成功')
+
+  responseBody = { request_id: 'redacted-diagnostic', usage: { total_tokens: 1 } }
+  await page.getByRole('button', { name: '测试连接' }).click()
+  await expect(page.locator('.connection-result')).toContainText('未找到可识别的模型文本')
+  await expect(page.locator('.connection-result')).toContainText('返回字段：request_id, usage')
+})
+
 test('missing provider key never sends a model request', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider preflight')
   let providerRequests = 0

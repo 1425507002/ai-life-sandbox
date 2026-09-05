@@ -78,12 +78,13 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
     } catch {
       // A non-JSON 200 response is handled as a response-format failure below.
     }
-    const payload = normalizeProviderErrorPayload(rawPayload)
+    const payload = normalizeProviderErrorPayload(rawPayload, [config.apiKey])
     if (!response.ok) {
       const failure = classifyProviderFailure(response.status, payload)
       return { ok: false, message: formatProviderFailure(failure), failure }
     }
-    if (providerErrorDetails(payload).providerMessage) {
+    const providerError = providerErrorDetails(payload)
+    if (providerError.providerMessage || providerError.providerCode !== undefined) {
       const failure = classifyProviderFailure(response.status, payload)
       return { ok: false, message: formatProviderFailure(failure), failure }
     }
