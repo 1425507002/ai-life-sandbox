@@ -2,7 +2,7 @@ import type { GameState, IncidentCandidate, ProviderConfig, ScriptPackage, Sugge
 import { validateSuggestedAction } from './scriptSchema'
 import { buildMemoryPacket } from './memory'
 import { validateIncidentCandidate } from './incidents'
-import { classifyProviderFailure, extractCompletionText, formatProviderFailure, normalizeProviderErrorPayload, parseJsonContent, providerErrorDetails, type ProviderFailureInfo } from './providerContract'
+import { classifyProviderFailure, describeResponseShape, extractCompletionText, formatProviderFailure, normalizeProviderErrorPayload, parseJsonContent, providerErrorDetails, type ProviderFailureInfo } from './providerContract'
 
 export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -87,7 +87,10 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
       const failure = classifyProviderFailure(response.status, payload)
       return { ok: false, message: formatProviderFailure(failure), failure }
     }
-    if (!extractCompletionText(rawPayload)) return { ok: false, message: '服务已响应，但返回格式无法识别。', failure: { kind: 'bad-response', httpStatus: response.status, retryable: false } }
+    if (!extractCompletionText(rawPayload)) {
+      const responseHint = rawPayload === null && responseText.trim() ? '非 JSON 响应' : `返回字段：${describeResponseShape(rawPayload)}`
+      return { ok: false, message: `服务已响应，但未找到可识别的模型文本（HTTP ${response.status}；${responseHint}）。`, failure: { kind: 'bad-response', httpStatus: response.status, retryable: false } }
+    }
     return { ok: true, message: `连接成功 · ${config.model}`, latencyMs: Date.now() - startedAt }
   } catch (error) {
     const failure = error instanceof DOMException && error.name === 'AbortError'

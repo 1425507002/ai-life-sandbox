@@ -30,6 +30,22 @@ function cleanText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function textFromContent(value: unknown): string | undefined {
+  const direct = cleanText(value)
+  if (direct) return direct
+  if (isRecord(value)) {
+    return cleanText(value.text) ?? cleanText(value.output_text) ?? textFromContent(value.content)
+  }
+  if (Array.isArray(value)) {
+    const text = value
+      .map((part) => textFromContent(part))
+      .filter((part): part is string => Boolean(part))
+      .join('')
+    return text || undefined
+  }
+  return undefined
+}
+
 export function normalizeProviderErrorPayload(value: unknown): ProviderErrorPayload {
   if (!isRecord(value)) return {}
   const error = isRecord(value.error) ? value.error : undefined
@@ -74,39 +90,48 @@ export function formatProviderFailure(info: ProviderFailureInfo) {
 
 export function extractCompletionText(value: unknown): string | null {
   if (!isRecord(value)) return null
-  const choices = Array.isArray(value.choices)
-    ? value.choices
-    : isRecord(value.data) && Array.isArray(value.data.choices) ? value.data.choices : []
-  const first = choices[0]
-  if (isRecord(first)) {
-    const message = isRecord(first.message) ? first.message : undefined
-    const content = message?.content
-    if (typeof content === 'string' && content.trim()) return content.trim()
-    if (isRecord(content) && cleanText(content.text)) return cleanText(content.text) ?? null
-    if (Array.isArray(content)) {
-      const text = content
-        .filter(isRecord)
-        .map((part) => ['text', 'output_text'].includes(String(part.type)) ? cleanText(part.text) : undefined)
-        .filter((part): part is string => Boolean(part))
-        .join('')
+  const containers = [value]
+  for (const key of ['data', 'output', 'response']) {
+    const nested = value[key]
+    if (isRecord(nested)) containers.push(nested)
+  }
+  for (const container of containers) {
+    const choices = Array.isArray(container.choices) ? container.choices : []
+    const first = choices[0]
+    if (isRecord(first)) {
+      const message = isRecord(first.message) ? first.message : undefined
+      const text = textFromContent(message?.content)
+        ?? cleanText(message?.reasoning_content)
+        ?? textFromContent(first.content)
+        ?? cleanText(first.text)
       if (text) return text
     }
-    if (cleanText(first.text)) return cleanText(first.text) ?? null
+    const containerText = cleanText(container.output_text)
+      ?? textFromContent(container.text)
+      ?? textFromContent(container.content)
+    if (containerText) return containerText
   }
-  if (cleanText(value.output_text)) return cleanText(value.output_text) ?? null
   if (Array.isArray(value.output)) {
-    const text = value.output
+    const text = textFromContent(value.output)
+    if (text) return text
+  }
+  if (Array.isArray(value.candidates)) {
+    const text = value.candidates
       .filter(isRecord)
-      .flatMap((item) => Array.isArray(item.content) ? item.content : [])
-      .filter(isRecord)
-      .map((part) => cleanText(part.text))
+      .map((candidate) => isRecord(candidate.content) ? textFromContent(candidate.content.parts) : undefined)
       .filter((part): part is string => Boolean(part))
       .join('')
     if (text) return text
   }
-  if (cleanText(value.content)) return cleanText(value.content) ?? null
-  if (isRecord(value.data) && cleanText(value.data.content)) return cleanText(value.data.content) ?? null
   return null
+}
+
+export function describeResponseShape(value: unknown): string {
+  if (value === null) return '空响应'
+  if (Array.isArray(value)) return `数组(${value.length})`
+  if (!isRecord(value)) return typeof value
+  const keys = Object.keys(value).slice(0, 12)
+  return keys.length ? keys.join(', ') : '空对象'
 }
 
 export function parseJsonContent<T>(content: string): T | null {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkProviderConnection, generateActionCandidates, generateIncident, generateNarration } from './aiProvider'
 import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { getScript } from '../data/scripts'
-import { classifyProviderFailure, parseJsonContent } from './providerContract'
+import { classifyProviderFailure, extractCompletionText, parseJsonContent } from './providerContract'
 
 const provider = { endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', apiKey: 'test-key-only', model: 'glm-4.7-flash' }
 
@@ -146,6 +146,13 @@ describe('checkProviderConnection', () => {
 })
 
 describe('provider contract helpers', () => {
+  it('recognizes nested native output and content shapes', () => {
+    expect(extractCompletionText({ output: { choices: [{ message: { content: '嵌套成功' } }] } })).toBe('嵌套成功')
+    expect(extractCompletionText({ content: [{ type: 'text', text: '数组成功' }] })).toBe('数组成功')
+    expect(extractCompletionText({ choices: [{ message: { reasoning_content: '推理成功' } }] })).toBe('推理成功')
+    expect(extractCompletionText({ candidates: [{ content: { parts: [{ text: '候选成功' }] } }] })).toBe('候选成功')
+  })
+
   it('parses fenced JSON and rejects malformed output', () => {
     expect(parseJsonContent<{ actions: string[] }>('```json\n{"actions":["a"]}\n```')).toEqual({ actions: ['a'] })
     expect(parseJsonContent('{not-json')).toBeNull()
