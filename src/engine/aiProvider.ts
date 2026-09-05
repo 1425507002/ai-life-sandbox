@@ -2,7 +2,7 @@ import type { GameState, IncidentCandidate, ProviderConfig, ScriptPackage, Sugge
 import { validateSuggestedAction } from './scriptSchema'
 import { buildMemoryPacket } from './memory'
 import { validateIncidentCandidate } from './incidents'
-import { classifyProviderFailure, extractCompletionText, formatProviderFailure, normalizeProviderErrorPayload, parseJsonContent, type ProviderFailureInfo } from './providerContract'
+import { classifyProviderFailure, extractCompletionText, formatProviderFailure, normalizeProviderErrorPayload, parseJsonContent, providerErrorDetails, type ProviderFailureInfo } from './providerContract'
 
 export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -71,9 +71,19 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
           { role: 'user', content: '请回复连接状态。' },
         ],
       }, controller.signal)
-    const rawPayload = await response.json().catch(() => null)
+    const responseText = await response.text()
+    let rawPayload: unknown = null
+    try {
+      rawPayload = JSON.parse(responseText)
+    } catch {
+      // A non-JSON 200 response is handled as a response-format failure below.
+    }
     const payload = normalizeProviderErrorPayload(rawPayload)
     if (!response.ok) {
+      const failure = classifyProviderFailure(response.status, payload)
+      return { ok: false, message: formatProviderFailure(failure), failure }
+    }
+    if (providerErrorDetails(payload).providerMessage) {
       const failure = classifyProviderFailure(response.status, payload)
       return { ok: false, message: formatProviderFailure(failure), failure }
     }

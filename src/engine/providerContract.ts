@@ -73,18 +73,40 @@ export function formatProviderFailure(info: ProviderFailureInfo) {
 }
 
 export function extractCompletionText(value: unknown): string | null {
-  if (!isRecord(value) || !Array.isArray(value.choices)) return null
-  const first = value.choices[0]
-  if (!isRecord(first) || !isRecord(first.message)) return null
-  const content = first.message.content
-  if (typeof content === 'string' && content.trim()) return content.trim()
-  if (!Array.isArray(content)) return null
-  const text = content
-    .filter(isRecord)
-    .map((part) => part.type === 'text' ? cleanText(part.text) : undefined)
-    .filter((part): part is string => Boolean(part))
-    .join('')
-  return text || null
+  if (!isRecord(value)) return null
+  const choices = Array.isArray(value.choices)
+    ? value.choices
+    : isRecord(value.data) && Array.isArray(value.data.choices) ? value.data.choices : []
+  const first = choices[0]
+  if (isRecord(first)) {
+    const message = isRecord(first.message) ? first.message : undefined
+    const content = message?.content
+    if (typeof content === 'string' && content.trim()) return content.trim()
+    if (isRecord(content) && cleanText(content.text)) return cleanText(content.text) ?? null
+    if (Array.isArray(content)) {
+      const text = content
+        .filter(isRecord)
+        .map((part) => ['text', 'output_text'].includes(String(part.type)) ? cleanText(part.text) : undefined)
+        .filter((part): part is string => Boolean(part))
+        .join('')
+      if (text) return text
+    }
+    if (cleanText(first.text)) return cleanText(first.text) ?? null
+  }
+  if (cleanText(value.output_text)) return cleanText(value.output_text) ?? null
+  if (Array.isArray(value.output)) {
+    const text = value.output
+      .filter(isRecord)
+      .flatMap((item) => Array.isArray(item.content) ? item.content : [])
+      .filter(isRecord)
+      .map((part) => cleanText(part.text))
+      .filter((part): part is string => Boolean(part))
+      .join('')
+    if (text) return text
+  }
+  if (cleanText(value.content)) return cleanText(value.content) ?? null
+  if (isRecord(value.data) && cleanText(value.data.content)) return cleanText(value.data.content) ?? null
+  return null
 }
 
 export function parseJsonContent<T>(content: string): T | null {

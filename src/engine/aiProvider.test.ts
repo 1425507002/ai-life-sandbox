@@ -54,6 +54,22 @@ describe('checkProviderConnection', () => {
     expect(nonJson.message).toBe('服务器返回 HTTP 502，但没有提供可识别的错误详情。')
   })
 
+  it('兼容常见的 completion 文本形状', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ text: '连接成功' }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: [{ type: 'output_text', text: '连接' }, { type: 'text', text: '成功' }] } }] }), { status: 200 })))
+
+    await expect(checkProviderConnection(provider)).resolves.toMatchObject({ ok: true })
+    await expect(checkProviderConnection(provider)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('HTTP 200 携带服务商错误时不再伪装成格式错误', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 1305, message: '该模型当前访问量过大' } }), { status: 200 })))
+    const result = await checkProviderConnection(provider)
+    expect(result.message).toContain('该模型当前访问量过大')
+    expect(result.failure?.kind).toBe('rate-limit')
+  })
+
   it('将服务器分类保留为诊断信息，但始终优先显示服务器原文', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 401, message: 'invalid api key' } }), { status: 401 })))
     const result = await checkProviderConnection(provider)
@@ -75,6 +91,12 @@ describe('checkProviderConnection', () => {
     expect(context.context.recentHistory).toHaveLength(8)
     expect(context.context.memory.summary).toContain('旧事 8')
     expect(context.state).toBeUndefined()
+  })
+
+  it('accepts fenced JSON from a compatible model response', async () => {
+    const state = buildInitialState(getScript('western-world'))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: '```json\n{"narrative":["第一段","第二段"]}\n```' } }] }), { status: 200 })))
+    await expect(generateNarration(provider, { input: '整理房间', result: ['已整理房间'], state })).resolves.toEqual(['第一段', '第二段'])
   })
 
   it('accepts only bounded AI incident candidates tied to existing NPCs', async () => {
