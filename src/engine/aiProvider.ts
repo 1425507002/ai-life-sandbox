@@ -2,6 +2,7 @@ import type { GameState, IncidentCandidate, ProviderConfig, ScriptPackage, Sugge
 import { validateSuggestedAction } from './scriptSchema'
 import { buildMemoryPacket } from './memory'
 import { validateIncidentCandidate } from './incidents'
+import { classifyProviderFailure, extractCompletionText, formatProviderFailure, normalizeProviderErrorPayload, parseJsonContent, type ProviderFailureInfo } from './providerContract'
 
 export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -19,12 +20,7 @@ export interface ProviderConnectionResult {
   ok: boolean
   message: string
   latencyMs?: number
-}
-
-type ProviderErrorPayload = {
-  error?: { code?: string | number; message?: string }
-  code?: string | number
-  message?: string
+  failure?: ProviderFailureInfo
 }
 
 const LOCAL_AI_PROXY_PATH = '/api/ai-proxy'
@@ -58,21 +54,9 @@ async function postCompletion(config: ProviderConfig, payload: Record<string, un
   })
 }
 
-function serverErrorMessage(status: number, payload: ProviderErrorPayload | null) {
-  const providerMessage = payload?.error?.message?.trim()
-    ? payload.error.message
-    : payload?.message?.trim()
-      ? payload.message
-      : undefined
-  const providerCode = payload?.error?.code ?? payload?.code
-  if (!providerMessage) return `服务器返回 HTTP ${status}，但没有提供可识别的错误详情。`
-  const codeNote = providerCode === undefined ? '' : `，业务错误码 ${providerCode}`
-  return `服务器反馈：${providerMessage}（HTTP ${status}${codeNote}）`
-}
-
 export async function checkProviderConnection(config: ProviderConfig): Promise<ProviderConnectionResult> {
-  if (!config.apiKey.trim()) return { ok: false, message: '请先在此页面填写 API Key。' }
-  if (!config.endpoint.trim() || !config.model.trim()) return { ok: false, message: '请先填写 Endpoint 和 Model。' }
+  if (!config.apiKey.trim()) return { ok: false, message: '请先在此页面填写 API Key。', failure: { kind: 'missing-config', retryable: false } }
+  if (!config.endpoint.trim() || !config.model.trim()) return { ok: false, message: '请先填写 Endpoint 和 Model。', failure: { kind: 'missing-config', retryable: false } }
 
   const startedAt = Date.now()
   const controller = new AbortController()
@@ -87,15 +71,22 @@ export async function checkProviderConnection(config: ProviderConfig): Promise<P
           { role: 'user', content: '请回复连接状态。' },
         ],
       }, controller.signal)
-    const payload = await response.json().catch(() => null) as (ProviderErrorPayload & { choices?: Array<{ message?: { content?: string } }> }) | null
-    if (!response.ok) return { ok: false, message: serverErrorMessage(response.status, payload) }
-    if (!payload?.choices?.[0]?.message?.content) return { ok: false, message: '服务已响应，但返回格式无法识别。' }
+    const rawPayload = await response.json().catch(() => null)
+    const payload = normalizeProviderErrorPayload(rawPayload)
+    if (!response.ok) {
+      const failure = classifyProviderFailure(response.status, payload)
+      return { ok: false, message: formatProviderFailure(failure), failure }
+    }
+    if (!extractCompletionText(rawPayload)) return { ok: false, message: '服务已响应，但返回格式无法识别。', failure: { kind: 'bad-response', httpStatus: response.status, retryable: false } }
     return { ok: true, message: `连接成功 · ${config.model}`, latencyMs: Date.now() - startedAt }
   } catch (error) {
-    const message = error instanceof DOMException && error.name === 'AbortError'
+    const failure = error instanceof DOMException && error.name === 'AbortError'
+      ? { kind: 'timeout' as const, retryable: true }
+      : { kind: 'network' as const, retryable: true }
+    const message = failure.kind === 'timeout'
       ? '连接超时（15 秒）。请检查代理、网络或服务地址；若 Key 错误，通常会返回 HTTP 401/403。'
       : '连接请求未到达模型服务，通常是本机代理、网络或服务地址问题；若 Key 错误，通常会返回 HTTP 401/403。'
-    return { ok: false, message }
+    return { ok: false, message, failure }
   } finally {
     clearTimeout(timer)
   }
@@ -120,10 +111,11 @@ export async function generateNarration(config: ProviderConfig, request: Narrati
         response_format: { type: 'json_object' },
       })
     if (!response.ok) return null
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
-    const content = payload.choices?.[0]?.message?.content
+    const payload = await response.json()
+    const content = extractCompletionText(payload)
     if (!content) return null
-    const parsed = JSON.parse(content) as { narrative?: unknown }
+    const parsed = parseJsonContent<{ narrative?: unknown }>(content)
+    if (!parsed) return null
     if (Array.isArray(parsed.narrative) && parsed.narrative.every((item) => typeof item === 'string')) return parsed.narrative as string[]
     return null
   } catch {
@@ -161,10 +153,11 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
         response_format: { type: 'json_object' },
       })
     if (!response.ok) return null
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
-    const content = payload.choices?.[0]?.message?.content
+    const payload = await response.json()
+    const content = extractCompletionText(payload)
     if (!content) return null
-    const parsed = JSON.parse(content) as { actions?: unknown }
+    const parsed = parseJsonContent<{ actions?: unknown }>(content)
+    if (!parsed) return null
     if (!Array.isArray(parsed.actions)) return null
     const seen = new Set<string>()
     const candidates = parsed.actions.filter((item): item is SuggestedAction => {
@@ -205,10 +198,11 @@ export async function generateIncident(config: ProviderConfig, request: Incident
       response_format: { type: 'json_object' },
     })
     if (!response.ok) return null
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
-    const content = payload.choices?.[0]?.message?.content
+    const payload = await response.json()
+    const content = extractCompletionText(payload)
     if (!content) return null
-    const parsed = JSON.parse(content) as { incident?: unknown }
+    const parsed = parseJsonContent<{ incident?: unknown }>(content)
+    if (!parsed) return null
     if (parsed.incident === null || parsed.incident === undefined) return null
     return validateIncidentCandidate(parsed.incident, request.state, request.script) ? parsed.incident : null
   } catch {

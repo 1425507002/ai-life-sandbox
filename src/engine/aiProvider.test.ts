@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkProviderConnection, generateActionCandidates, generateIncident, generateNarration } from './aiProvider'
 import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { getScript } from '../data/scripts'
+import { classifyProviderFailure, parseJsonContent } from './providerContract'
 
 const provider = { endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', apiKey: 'test-key-only', model: 'glm-4.7-flash' }
 
@@ -13,7 +14,7 @@ describe('checkProviderConnection', () => {
 
     const result = await checkProviderConnection(provider)
 
-    expect(result).toEqual({ ok: false, message: '服务器反馈：该模型当前访问量过大，请您稍后再试（HTTP 429，业务错误码 1305）' })
+    expect(result).toMatchObject({ ok: false, message: '服务器反馈：该模型当前访问量过大，请您稍后再试（HTTP 429，业务错误码 1305）', failure: { kind: 'rate-limit', providerCode: 1305, retryable: true } })
   })
 
   it('保留智谱周限额错误的服务器原文和业务错误码', async () => {
@@ -23,6 +24,7 @@ describe('checkProviderConnection', () => {
 
     expect(result.message).toContain('您已达到每周使用上限，您的限额将在下周重置')
     expect(result.message).toContain('业务错误码 1310')
+    expect(result.failure?.kind).toBe('quota')
   })
 
   it('支持顶层 message，并优先使用嵌套 error.message', async () => {
@@ -50,6 +52,13 @@ describe('checkProviderConnection', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('upstream failure', { status: 502 })))
     const nonJson = await checkProviderConnection(provider)
     expect(nonJson.message).toBe('服务器返回 HTTP 502，但没有提供可识别的错误详情。')
+  })
+
+  it('将服务器分类保留为诊断信息，但始终优先显示服务器原文', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 401, message: 'invalid api key' } }), { status: 401 })))
+    const result = await checkProviderConnection(provider)
+    expect(result.message).toContain('invalid api key')
+    expect(result.failure).toMatchObject({ kind: 'auth', retryable: false, httpStatus: 401 })
   })
 
   it('sends a bounded memory packet instead of the full game state', async () => {
@@ -111,5 +120,17 @@ describe('checkProviderConnection', () => {
     const result = await generateActionCandidates(provider, { state, script, localCandidates: [local] })
 
     expect(result?.[0]).toMatchObject({ title: '改写后的行动', timeCost: local.timeCost, moneyCost: local.moneyCost, staminaCost: local.staminaCost, location: local.location, risk: local.risk })
+  })
+})
+
+describe('provider contract helpers', () => {
+  it('parses fenced JSON and rejects malformed output', () => {
+    expect(parseJsonContent<{ actions: string[] }>('```json\n{"actions":["a"]}\n```')).toEqual({ actions: ['a'] })
+    expect(parseJsonContent('{not-json')).toBeNull()
+  })
+
+  it('distinguishes quota from transient rate limiting', () => {
+    expect(classifyProviderFailure(429, { error: { code: 1310, message: '每周使用上限' } }).kind).toBe('quota')
+    expect(classifyProviderFailure(429, { error: { code: 1305, message: '访问量过大' } }).kind).toBe('rate-limit')
   })
 })
