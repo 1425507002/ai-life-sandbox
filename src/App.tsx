@@ -59,9 +59,14 @@ function App() {
   const handleAction = async (input = actionInput) => {
     if (!input.trim() || busy) return
     setBusy(true)
-    await runAction(input)
-    setActionInput('')
-    setBusy(false)
+    try {
+      await runAction(input)
+      setActionInput('')
+    } catch {
+      notify({ type: 'error', message: '行动处理出现异常，已保留当前规则状态，请稍后重试。' })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleSubmit = (event: FormEvent) => {

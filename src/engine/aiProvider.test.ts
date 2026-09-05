@@ -20,6 +20,21 @@ describe('checkProviderConnection', () => {
     }
   })
 
+  it('aborts the provider task when the gameplay timeout expires', async () => {
+    vi.useFakeTimers()
+    let aborted = false
+    try {
+      const pending = withModelTimeout((signal) => new Promise<string>(() => {
+        signal.addEventListener('abort', () => { aborted = true }, { once: true })
+      }), '本地结算', 10)
+      await vi.advanceTimersByTimeAsync(11)
+      await expect(pending).resolves.toBe('本地结算')
+      expect(aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('保留智谱 1305 的服务器原文和业务错误码', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 1305, message: '该模型当前访问量过大，请您稍后再试' } }), { status: 429 })))
 

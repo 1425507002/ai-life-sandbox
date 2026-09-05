@@ -281,7 +281,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }]), { turn: finalState.turn, state: finalState }].slice(-25)
     const latest = get()
     const latestSession = latest.sessions[activeLifeId]
-    if (latest.activeScriptId !== activeScriptId || latest.activeLifeId !== activeLifeId || !latestSession || latestSession.state.turn !== session.state.turn) return
+    if (latest.activeScriptId !== activeScriptId || latest.activeLifeId !== activeLifeId || !latestSession || latestSession.state !== session.state || latestSession.state.turn !== session.state.turn) return
     const nextSessions = { ...latest.sessions, [activeLifeId]: { ...latestSession, state: finalState, snapshots } }
     const aiConfigured = Boolean(providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim())
     const lastNotice = aiConfigured && !maybeNarrative && !maybeCandidates && !incidentResult
