@@ -48,14 +48,18 @@ function textFromContent(value: unknown): string | undefined {
 
 function redactSecrets(value: string | undefined, secrets: string[]) {
   if (!value) return undefined
-  return secrets
-    .filter((secret) => secret.trim())
+  const candidates = secrets.flatMap((secret) => [secret, secret.trim()]).filter(Boolean)
+  return candidates
     .sort((a, b) => b.length - a.length)
     .reduce((text, secret) => text.split(secret).join('[已隐藏]'), value)
 }
 
 function redactCode(value: unknown, secrets: string[]) {
-  if (typeof value === 'number') return value
+  if (typeof value === 'number') {
+    const original = String(value)
+    const redacted = redactSecrets(original, secrets)
+    return redacted === original ? value : redacted
+  }
   return redactSecrets(cleanText(value), secrets)
 }
 

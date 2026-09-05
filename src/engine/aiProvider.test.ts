@@ -63,6 +63,20 @@ describe('checkProviderConnection', () => {
     expect(JSON.stringify(result.failure)).not.toContain(secret)
   })
 
+  it('redacts numeric and whitespace-padded API keys in provider errors', async () => {
+    const numericSecret = '123456'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 123456, message: `invalid key ${numericSecret}` } }), { status: 401 })))
+    const numericResult = await checkProviderConnection({ ...provider, apiKey: numericSecret })
+    expect(numericResult.message).not.toContain(numericSecret)
+    expect(JSON.stringify(numericResult.failure)).not.toContain(numericSecret)
+
+    const paddedSecret = ' key-123 '
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'key-123', message: 'invalid key key-123' } }), { status: 401 })))
+    const paddedResult = await checkProviderConnection({ ...provider, apiKey: paddedSecret })
+    expect(paddedResult.message).not.toContain('key-123')
+    expect(JSON.stringify(paddedResult.failure)).not.toContain('key-123')
+  })
+
   it('keeps a provider business code when HTTP 200 has no error message', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 1305 } }), { status: 200 })))
     const result = await checkProviderConnection(provider)
