@@ -56,10 +56,11 @@ describe('checkProviderConnection', () => {
 
   it('does not reflect an API key from an upstream error', async () => {
     const secret = 'test-secret-key-only'
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 401, message: `invalid key ${secret}` } }), { status: 401 })))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: secret, message: `invalid key ${secret}` } }), { status: 401 })))
     const result = await checkProviderConnection({ ...provider, apiKey: secret })
     expect(result.message).not.toContain(secret)
     expect(result.message).toContain('[已隐藏]')
+    expect(JSON.stringify(result.failure)).not.toContain(secret)
   })
 
   it('keeps a provider business code when HTTP 200 has no error message', async () => {

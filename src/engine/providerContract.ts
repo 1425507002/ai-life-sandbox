@@ -54,12 +54,17 @@ function redactSecrets(value: string | undefined, secrets: string[]) {
     .reduce((text, secret) => text.split(secret).join('[已隐藏]'), value)
 }
 
+function redactCode(value: unknown, secrets: string[]) {
+  if (typeof value === 'number') return value
+  return redactSecrets(cleanText(value), secrets)
+}
+
 export function normalizeProviderErrorPayload(value: unknown, secrets: string[] = []): ProviderErrorPayload {
   if (!isRecord(value)) return {}
   const error = isRecord(value.error) ? value.error : undefined
   return {
-    error: error ? { code: error.code as string | number | undefined, message: redactSecrets(cleanText(error.message), secrets) } : undefined,
-    code: value.code as string | number | undefined,
+    error: error ? { code: redactCode(error.code, secrets), message: redactSecrets(cleanText(error.message), secrets) } : undefined,
+    code: redactCode(value.code, secrets),
     message: redactSecrets(cleanText(value.message), secrets),
   }
 }
