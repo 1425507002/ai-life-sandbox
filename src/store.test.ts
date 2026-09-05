@@ -173,6 +173,23 @@ describe('game store', () => {
     expect(current.lastAction).toBeNull()
   })
 
+  it('does not overwrite a same-turn player edit while AI enhancement is pending', async () => {
+    vi.stubGlobal('window', {})
+    let release: (response: Response) => void = () => undefined
+    const pending = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn(() => pending))
+    useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'test' } })
+    const originalTurn = useGameStore.getState().sessions['western-world::default'].state.turn
+    const running = useGameStore.getState().runAction('整理工具和窗边')
+    useGameStore.getState().updatePlayer({ name: '同回合手动修改' })
+    release(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['旧 AI 叙事'] }) } }] }), { status: 200 }))
+    await running
+
+    const current = useGameStore.getState()
+    expect(current.sessions['western-world::default'].state.player.name).toBe('同回合手动修改')
+    expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
+  })
+
   it('queues a validated AI incident without letting the model write game state', async () => {
     vi.stubGlobal('window', {})
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0)
