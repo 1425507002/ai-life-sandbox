@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AI_ENHANCEMENT_TIMEOUT_MS, checkProviderConnection, generateActionCandidates, generateIncident, generateNarration, withModelTimeout } from './aiProvider'
+import { AI_ENHANCEMENT_TIMEOUT_MS, checkProviderConnection, generateActionCandidates, generateIncident, generateNarration, withModelTimeout, withModelTimeoutResult } from './aiProvider'
 import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { getScript } from '../data/scripts'
 import { classifyProviderFailure, extractCompletionText, parseJsonContent } from './providerContract'
@@ -30,6 +30,17 @@ describe('checkProviderConnection', () => {
       await vi.advanceTimersByTimeAsync(11)
       await expect(pending).resolves.toBe('本地结算')
       expect(aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports a gameplay timeout separately from the local fallback value', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = withModelTimeoutResult(() => new Promise<string>(() => undefined), '本地结算', 10)
+      await vi.advanceTimersByTimeAsync(11)
+      await expect(pending).resolves.toEqual({ value: '本地结算', timedOut: true })
     } finally {
       vi.useRealTimers()
     }

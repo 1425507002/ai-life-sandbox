@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from './store'
 import { getScript } from './data/scripts'
 import * as storage from './storage'
+import { AI_ENHANCEMENT_TIMEOUT_MS } from './engine/aiProvider'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -217,6 +218,26 @@ describe('game store', () => {
     const current = useGameStore.getState()
     expect(current.sessions['western-world::default'].state.player.name).toBe('同回合手动修改')
     expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
+  })
+
+  it('explains an enhancement timeout while keeping the local settlement', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.stubGlobal('window', {})
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
+      useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'test' } })
+
+      const running = useGameStore.getState().runAction('整理工具和窗边')
+      await vi.advanceTimersByTimeAsync(AI_ENHANCEMENT_TIMEOUT_MS + 1)
+      await running
+
+      const current = useGameStore.getState()
+      expect(current.sessions['western-world::default'].state.turn).toBeGreaterThan(0)
+      expect(current.lastNotice?.message).toContain('AI 增强超过')
+      expect(current.lastNotice?.message).toContain(String(AI_ENHANCEMENT_TIMEOUT_MS))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('persists the latest provider config after a delayed action completes', async () => {

@@ -55,20 +55,30 @@ async function postCompletion(config: ProviderConfig, payload: Record<string, un
   })
 }
 
-export async function withModelTimeout<T>(task: (signal: AbortSignal) => Promise<T>, fallback: T, timeoutMs = AI_ENHANCEMENT_TIMEOUT_MS): Promise<T> {
+export interface ModelTimeoutResult<T> {
+  value: T
+  timedOut: boolean
+}
+
+export async function withModelTimeoutResult<T>(task: (signal: AbortSignal) => Promise<T>, fallback: T, timeoutMs = AI_ENHANCEMENT_TIMEOUT_MS): Promise<ModelTimeoutResult<T>> {
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<T>((resolve) => {
+  const timeout = new Promise<ModelTimeoutResult<T>>((resolve) => {
     timer = setTimeout(() => {
       controller.abort()
-      resolve(fallback)
+      resolve({ value: fallback, timedOut: true })
     }, timeoutMs)
   })
+  const taskResult = task(controller.signal).then((value) => ({ value, timedOut: false }))
   try {
-    return await Promise.race([task(controller.signal), timeout])
+    return await Promise.race([taskResult, timeout])
   } finally {
     if (timer) clearTimeout(timer)
   }
+}
+
+export async function withModelTimeout<T>(task: (signal: AbortSignal) => Promise<T>, fallback: T, timeoutMs = AI_ENHANCEMENT_TIMEOUT_MS): Promise<T> {
+  return (await withModelTimeoutResult(task, fallback, timeoutMs)).value
 }
 
 export async function checkProviderConnection(config: ProviderConfig): Promise<ProviderConnectionResult> {
