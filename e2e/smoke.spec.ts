@@ -62,6 +62,15 @@ test('mobile keeps action-first layout and bottom navigation', async ({ page }, 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
 })
 
+test('history keeps the player action text after settlement', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only history audit flow')
+  await page.goto('/')
+  await page.locator('.action-card').first().click()
+  await expect(page.locator('.action-feedback')).toBeVisible()
+  await page.getByRole('button', { name: '履历' }).click()
+  await expect(page.locator('.timeline-input').first()).toContainText('你的行动：')
+})
+
 test('provider error details remain visible in settings', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider proxy flow')
   await page.route('**/api/ai-proxy/zhipu', async (route) => {

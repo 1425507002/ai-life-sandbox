@@ -33,6 +33,14 @@ describe('action engine', () => {
     expect(result.state.history[0].input).toBe('  观察窗边的陌生鸟  ')
   })
 
+  it('keeps the original suggested-action input for later review', () => {
+    const state = buildInitialState(script)
+    const result = resolveAction(state, '  去集市看看今天有什么新鲜事  ', script)
+
+    expect(result.outcome).toBe('success')
+    expect(result.state.history[0].input).toBe('  去集市看看今天有什么新鲜事  ')
+  })
+
   it('charges the tavern cost exactly once', () => {
     const harborState = buildInitialState(harborScript, 'tide-harbor')
     const startingMoney = harborState.player.money
