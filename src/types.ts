@@ -149,6 +149,8 @@ export interface SuggestedAction {
 
 export interface EventLog {
   id: string
+  /** Monotonic per-life cursor; never use the display date as the replay cursor. */
+  sequence?: number
   turn?: number
   actionId?: string
   ruleId?: string
@@ -195,6 +197,8 @@ export interface GameState {
   knownFacts: string[]
   scheduledEvents?: ScheduledEvent[]
   memory?: MemoryState
+  /** Next event sequence for this life. Legacy saves may omit it and are migrated. */
+  nextEventSequence?: number
   turn: number
 }
 

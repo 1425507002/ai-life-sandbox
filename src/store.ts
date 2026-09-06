@@ -10,6 +10,7 @@ import type { ActionGenerationMode, ActionSummary, GameSession, GameState, NavKe
 import { validateScriptPackage, validateSuggestedAction } from './engine/scriptSchema'
 import { isUiThemeId } from './uiThemes'
 import type { UiThemeId } from './types'
+import { normalizeEventLedger } from './engine/eventLedger'
 
 const DEFAULT_PROVIDER: ProviderConfig = ZHIPU_FLASH_PROVIDER
 const LEGACY_DEFAULT_PROVIDER: ProviderConfig = { endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: '', model: 'gpt-4o-mini' }
@@ -123,6 +124,7 @@ function normalizeSavedState(rawState: GameState, script: ScriptPackage, mapId?:
     memory: rawState.memory && typeof rawState.memory === 'object' ? rawState.memory : base.memory,
     turn: Number.isFinite(rawState.turn) ? Math.max(0, rawState.turn) : 0,
   }
+  normalizeEventLedger(state)
   state.scheduledEvents = Array.isArray(rawState.scheduledEvents)
     ? rawState.scheduledEvents.filter((event) => validateScheduledEvent(event, state, script)).slice(0, 8)
     : []
@@ -363,7 +365,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const snapshots = session.snapshots ?? [{ turn: session.state.turn, state: session.state }]
     const target = [...snapshots].reverse().find((snapshot) => snapshot.turn <= turn)
     if (!target || target.turn >= session.state.turn) return { lastNotice: { type: 'info', message: '当前已经是这条人生的最早记录。' } }
-    const nextSession = { ...session, state: structuredClone(target.state), snapshots: snapshots.filter((snapshot) => snapshot.turn <= target.turn) }
+    const highestIssuedSequence = Math.max(
+      session.state.nextEventSequence ?? 1,
+      ...session.state.history.map((event) => typeof event.sequence === 'number' ? event.sequence + 1 : 1),
+    )
+    const restoredState = structuredClone(target.state)
+    restoredState.nextEventSequence = Math.max(highestIssuedSequence, restoredState.nextEventSequence ?? 1)
+    const nextSession = { ...session, state: restoredState, snapshots: snapshots.filter((snapshot) => snapshot.turn <= target.turn) }
     const sessions = { ...state.sessions, [state.activeLifeId]: nextSession }
     persist({ ...state, sessions })
     return { sessions, activeNav: 'play', lastAction: null, lastNotice: { type: 'success', message: `已回到第 ${target.turn} 次记录，之后的变化被保留为未发生。` } }

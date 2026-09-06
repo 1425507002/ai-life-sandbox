@@ -108,13 +108,20 @@ describe('game store', () => {
     useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', activeNav: 'play' })
     const before = useGameStore.getState().sessions['western-world::default'].state.turn
     await useGameStore.getState().runAction('整理工具和窗边')
-    expect(useGameStore.getState().sessions['western-world::default'].state.turn).toBe(before + 1)
-    expect(useGameStore.getState().sessions['western-world::default'].state.history[0].input).toBe('整理工具和窗边')
+    const firstState = useGameStore.getState().sessions['western-world::default'].state
+    const firstSequence = firstState.history[0].sequence
+    expect(firstState.turn).toBe(before + 1)
+    expect(firstState.history[0].input).toBe('整理工具和窗边')
+    expect(firstSequence).toBeDefined()
 
     useGameStore.getState().rollbackLife(before)
     const current = useGameStore.getState()
     expect(current.sessions['western-world::default'].state.turn).toBe(before)
     expect(current.activeLifeId).toBe('western-world::default')
+
+    await useGameStore.getState().runAction('整理工具和窗边')
+    const replayed = useGameStore.getState().sessions['western-world::default'].state
+    expect(replayed.history[0].sequence).toBeGreaterThan(firstSequence ?? 0)
   })
 
   it('migrates legacy map saves to the matching life and caps imported snapshots', () => {
