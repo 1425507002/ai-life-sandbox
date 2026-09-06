@@ -152,6 +152,8 @@ export interface EventLog {
   turn?: number
   actionId?: string
   ruleId?: string
+  /** The player's original action text, kept for replay and AI quality review. */
+  input?: string
   date: string
   title: string
   body: string

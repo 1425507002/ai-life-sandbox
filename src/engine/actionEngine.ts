@@ -160,7 +160,7 @@ function genericOutcome(state: GameState, input: string, script: ScriptPackage):
   next.player.stamina = Math.max(0, next.player.stamina - 3)
   next.world.narrative = [`你决定先观察一下周围，再处理“${input}”这件事。`, '这不是一个能立刻得到答案的行动，但你记下了几个值得继续确认的细节。']
   next.world.currentFocus = `继续确认：${input}`
-  next.history.unshift({ id: `e-${next.turn}-freeform`, turn: next.turn, actionId: `freeform:${input.toLowerCase()}`, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
+  next.history.unshift({ id: `e-${next.turn}-freeform`, turn: next.turn, actionId: `freeform:${input.toLowerCase()}`, input, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
   advanceNpcSchedules(next)
   processDueEvents(next, script)
   next.suggestedActions = generateSuggestedActions(next, script)
@@ -374,7 +374,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   scheduleRuleEvent(next, script, actionRule)
   advanceNpcSchedules(next)
   processDueEvents(next, script, revealedLocation ? 1 : 0)
-  next.history.unshift({ id: `e-${next.turn}-${match.id}`, turn: next.turn, actionId: match.id, ruleId: actionRule, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
+  next.history.unshift({ id: `e-${next.turn}-${match.id}`, turn: next.turn, actionId: match.id, ruleId: actionRule, input: cleanInput, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
   return { outcome, title, narrative: next.world.narrative, feedback: outcome === 'partial' ? '行动完成了一部分，也留下了新的代价或线索。' : '行动已经结算，世界留下了新的变化。', timeLabel: `约 ${match.timeCost} 分钟`, deltas, stateDiff: stateDiff(state, next), state: next }

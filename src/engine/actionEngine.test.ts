@@ -16,6 +16,7 @@ describe('action engine', () => {
     expect(result.state.player.stamina).toBeLessThan(state.player.stamina)
     expect(result.state.history[0].ruleId).toBe('market')
     expect(result.state.history[0].actionId).toContain('western-world:market:')
+    expect(result.state.history[0].input).toBe('去集市看看今天有什么新鲜事')
     expect(result.state.history[0].stateDiff?.some((diff) => diff.key === 'player.stamina')).toBe(true)
     expect(result.state.suggestedActions.every((action) => action.ruleId !== 'market')).toBe(true)
     expect(result.state.suggestedActions.map((action) => action.title)).not.toEqual(state.suggestedActions.map((action) => action.title))

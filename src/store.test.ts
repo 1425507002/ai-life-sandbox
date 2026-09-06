@@ -109,6 +109,7 @@ describe('game store', () => {
     const before = useGameStore.getState().sessions['western-world::default'].state.turn
     await useGameStore.getState().runAction('整理工具和窗边')
     expect(useGameStore.getState().sessions['western-world::default'].state.turn).toBe(before + 1)
+    expect(useGameStore.getState().sessions['western-world::default'].state.history[0].input).toBe('整理工具和窗边')
 
     useGameStore.getState().rollbackLife(before)
     const current = useGameStore.getState()
