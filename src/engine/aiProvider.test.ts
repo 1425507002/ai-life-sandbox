@@ -35,6 +35,34 @@ describe('checkProviderConnection', () => {
     }
   })
 
+  it('forwards the gameplay abort signal to the real provider fetch', async () => {
+    vi.useFakeTimers()
+    let receivedSignal: AbortSignal | undefined
+    try {
+      vi.stubGlobal('fetch', vi.fn((_input: unknown, init?: { signal?: AbortSignal }) => {
+        receivedSignal = init?.signal
+        return new Promise<Response>(() => undefined)
+      }))
+      const state = buildInitialState(getScript('western-world'))
+      const pending = withModelTimeout(
+        (signal) => generateNarration(provider, { input: '测试延迟', result: ['本地结果'], state }, signal),
+        null,
+        10,
+      )
+      await vi.advanceTimersByTimeAsync(11)
+      await expect(pending).resolves.toBeNull()
+      expect(receivedSignal?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('turns a provider fetch rejection into a local enhancement fallback', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('simulated provider outage')))
+    const state = buildInitialState(getScript('western-world'))
+    await expect(generateNarration(provider, { input: '测试失败', result: ['本地结果'], state })).resolves.toBeNull()
+  })
+
   it('保留智谱 1305 的服务器原文和业务错误码', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 1305, message: '该模型当前访问量过大，请您稍后再试' } }), { status: 429 })))
 

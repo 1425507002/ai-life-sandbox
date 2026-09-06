@@ -132,6 +132,20 @@ test('missing provider key never sends a model request', async ({ page }, testIn
   expect(providerRequests).toBe(0)
 })
 
+test('provider settings survive a browser reload through IndexedDB', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only persistence flow')
+  await page.goto('/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 Endpoint').fill('https://example.test/v1/chat/completions')
+  await page.getByLabel('模型名称').fill('persist-test-model')
+  await page.getByLabel('模型 API Key').fill('persist-test-key-only')
+  await page.reload()
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await expect(page.getByLabel('模型 Endpoint')).toHaveValue('https://example.test/v1/chat/completions')
+  await expect(page.getByLabel('模型名称')).toHaveValue('persist-test-model')
+  await expect(page.getByLabel('模型 API Key')).toHaveValue('persist-test-key-only')
+})
+
 test('a baby life does not start with adult NPC relationships', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only flow')
   await page.goto('/')

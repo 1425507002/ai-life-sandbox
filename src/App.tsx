@@ -32,6 +32,23 @@ const providerPresets: Array<{ id: string; label: string; endpoint: string; mode
   { id: 'custom', label: '自定义 OpenAI-compatible 服务', endpoint: '', model: '', note: '填写任意兼容 Chat Completions 的服务地址。' },
 ]
 
+export async function runActionWithRecovery(
+  runAction: (input: string) => Promise<void>,
+  input: string,
+  onSuccess: () => void,
+  onError: () => void,
+  onFinally: () => void,
+) {
+  try {
+    await runAction(input)
+    onSuccess()
+  } catch {
+    onError()
+  } finally {
+    onFinally()
+  }
+}
+
 function providerPresetId(config: ProviderConfig) {
   return providerPresets.find((preset) => preset.endpoint === config.endpoint && preset.model === config.model)?.id ?? 'custom'
 }
@@ -59,14 +76,13 @@ function App() {
   const handleAction = async (input = actionInput) => {
     if (!input.trim() || busy) return
     setBusy(true)
-    try {
-      await runAction(input)
-      setActionInput('')
-    } catch {
-      notify({ type: 'error', message: '行动处理出现异常，已保留当前规则状态，请稍后重试。' })
-    } finally {
-      setBusy(false)
-    }
+    await runActionWithRecovery(
+      runAction,
+      input,
+      () => setActionInput(''),
+      () => notify({ type: 'error', message: '行动处理出现异常，已保留当前规则状态，请稍后重试。' }),
+      () => setBusy(false),
+    )
   }
 
   const handleSubmit = (event: FormEvent) => {
