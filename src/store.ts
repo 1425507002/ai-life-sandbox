@@ -195,6 +195,14 @@ function normalizeSessions(raw: unknown, scripts: ScriptPackage[]): Record<strin
   return sessions
 }
 
+function hasMalformedSessionState(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return true
+  return Object.values(raw as Record<string, unknown>).some((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return true
+    return !isStateLike((value as Partial<GameSession>).state)
+  })
+}
+
 function mergeScripts(scripts: unknown): ScriptPackage[] {
   const custom = Array.isArray(scripts)
     ? scripts.filter((script) => {
@@ -367,6 +375,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return
     }
     const candidate = runtime as Partial<{ sessions: Record<string, GameSession>; activeScriptId: string; activeLifeId: string; providerConfig: ProviderConfig; actionMode: ActionGenerationMode; uiThemeId: UiThemeId; scripts: ScriptPackage[] }>
+    if (hasMalformedSessionState(candidate.sessions)) {
+      set({ lastNotice: { type: 'error', message: '存档中包含损坏的人生状态，未导入任何内容。请使用更早的导出文件。' } })
+      return
+    }
     const scripts = mergeScripts(candidate.scripts ?? get().scripts)
     const requestedScriptId = candidate.activeScriptId === 'dawnmere' || candidate.activeScriptId === 'tideglass' ? 'western-world' : candidate.activeScriptId
     const activeScriptId = requestedScriptId && scripts.some((script) => script.manifest.id === requestedScriptId) ? requestedScriptId : scripts[0].manifest.id
