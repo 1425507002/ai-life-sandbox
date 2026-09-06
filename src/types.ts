@@ -205,6 +205,8 @@ export interface GameState {
 export interface MemoryState {
   summary: string
   compressedThroughTurn: number
+  /** Preferred compression cursor; legacy saves may omit it. */
+  compressedThroughSequence?: number
   compressedEventIds?: string[]
   pinnedFacts: string[]
   openThreads: string[]

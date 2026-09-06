@@ -399,9 +399,13 @@ export function buildInitialState(script: ScriptPackage, mapId?: string): GameSt
   next.player.maxStamina = Math.max(profile.maxStamina ?? 100, next.player.stamina)
   next.npcs = next.npcs.map((npc) => ({ ...npc, met: npc.met ?? (npc.relationship !== 0 || npc.lastInteraction !== '尚未相遇') }))
   next.locations = next.locations.map((location) => ({ ...location, discovered: location.discovered ?? true }))
+  normalizeEventLedger(next)
+  next.memory = {
+    ...(next.memory ?? { summary: '', compressedThroughTurn: 0, compressedEventIds: [], pinnedFacts: [], openThreads: [] }),
+    compressedThroughSequence: next.memory?.compressedThroughSequence ?? 0,
+  }
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
-  normalizeEventLedger(next)
   return next
 }
 
@@ -456,7 +460,7 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
     inventory: [...(profile.startingInventory ?? [])],
     knownFacts: [],
     scheduledEvents: [],
-    memory: { summary: '', compressedThroughTurn: 0, compressedEventIds: [], pinnedFacts: [], openThreads: [] } satisfies MemoryState,
+    memory: { summary: '', compressedThroughTurn: 0, compressedThroughSequence: 0, compressedEventIds: [], pinnedFacts: [], openThreads: [] } satisfies MemoryState,
     nextEventSequence: 1,
     turn: 0,
   }

@@ -1,14 +1,15 @@
 import type { GameState, MemoryState } from '../types'
 
 export const RECENT_HISTORY_LIMIT = 8
-export const MEMORY_SUMMARY_LIMIT = 1800
+export const MEMORY_SUMMARY_LIMIT = 1000
 const MEMORY_EVENT_ID_LIMIT = 128
 const INVENTORY_LIMIT = 40
 const NPC_LIMIT = 24
 const LOCATION_LIMIT = 32
 const TRAIT_LIMIT = 12
-const TEXT_LIMIT = 240
-const HISTORY_BODY_LIMIT = 360
+const TEXT_LIMIT = 180
+const HISTORY_BODY_LIMIT = 160
+const EVENT_ID_LIMIT = 120
 
 function oneLine(text: string) {
   return text.replace(/\s+/g, ' ').trim()
@@ -17,6 +18,18 @@ function oneLine(text: string) {
 function clip(text: string, limit = TEXT_LIMIT) {
   const normalized = oneLine(text)
   return normalized.length > limit ? `${normalized.slice(0, limit - 1)}…` : normalized
+}
+
+function normalizeEventId(id: string) {
+  const normalized = oneLine(id)
+  if (normalized.length <= EVENT_ID_LIMIT) return normalized
+  let hash = 2166136261
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  const suffix = `~${(hash >>> 0).toString(16).padStart(8, '0')}`
+  return `${normalized.slice(0, EVENT_ID_LIMIT - suffix.length)}${suffix}`
 }
 
 function makeSummary(state: GameState, newlyCompressed: GameState['history']) {
@@ -32,19 +45,39 @@ function makeSummary(state: GameState, newlyCompressed: GameState['history']) {
 export function compressMemory(state: GameState): MemoryState {
   const olderHistory = state.history.slice(RECENT_HISTORY_LIMIT)
   const previousThrough = state.memory?.compressedThroughTurn ?? 0
-  const previousEventIds = new Set(state.memory?.compressedEventIds ?? [])
-  const newlyCompressed = olderHistory.filter((event) => event.turn === undefined ? !previousEventIds.has(event.id) : event.turn > previousThrough)
+  const hasSequenceCursor = typeof state.memory?.compressedThroughSequence === 'number'
+  const previousSequence = hasSequenceCursor ? state.memory?.compressedThroughSequence ?? 0 : 0
+  const previousEventIds = new Set((state.memory?.compressedEventIds ?? []).map(normalizeEventId))
+  const legacyCompressedSequence = !hasSequenceCursor
+    ? olderHistory
+      .filter((event) => previousEventIds.has(normalizeEventId(event.id)))
+      .reduce((max, event) => Math.max(max, event.sequence ?? 0), 0)
+    : 0
+  const newlyCompressed = olderHistory.filter((event) => {
+    if (previousEventIds.has(normalizeEventId(event.id))) return false
+    if (hasSequenceCursor && typeof event.sequence === 'number') return event.sequence > previousSequence
+    if (legacyCompressedSequence > 0 && typeof event.sequence === 'number') return event.sequence > legacyCompressedSequence
+    return event.turn === undefined ? true : event.turn > previousThrough
+  })
   const latestTurn = newlyCompressed.reduce((max, event) => Math.max(max, event.turn ?? 0), previousThrough)
-  const compressedEventIds = [...previousEventIds, ...newlyCompressed.map((event) => event.id)].slice(-MEMORY_EVENT_ID_LIMIT)
+  const latestSequence = newlyCompressed.reduce((max, event) => Math.max(max, event.sequence ?? 0), previousSequence)
+  const compressedEventIds = [...previousEventIds, ...newlyCompressed.map((event) => normalizeEventId(event.id))]
+    .map((id) => clip(id, 120))
+    .filter(Boolean)
+    .filter((id, index, ids) => ids.indexOf(id) === index)
+    .slice(-MEMORY_EVENT_ID_LIMIT)
+  const safeExistingSummary = (state.memory?.summary ?? '').trim().slice(-MEMORY_SUMMARY_LIMIT)
   const scheduled = (state.scheduledEvents ?? []).map((event) => `第${event.dueTurn}次待处理：${clip(event.title, 100)}`)
   const unresolved = state.history.filter((event) => event.outcome === 'unknown').slice(0, 8).map((event) => `待确认：${clip(event.title, 100)}`)
-  return {
-    summary: newlyCompressed.length ? makeSummary(state, newlyCompressed) : state.memory?.summary ?? '',
+  const memory: MemoryState = {
+    summary: newlyCompressed.length ? makeSummary(state, newlyCompressed) : safeExistingSummary,
     compressedThroughTurn: latestTurn,
     compressedEventIds,
     pinnedFacts: [...new Set(state.knownFacts.map((fact) => clip(fact, 160)))].filter(Boolean).slice(-24),
     openThreads: [...new Set([...scheduled, ...unresolved])].slice(0, 12),
   }
+  if (hasSequenceCursor) memory.compressedThroughSequence = latestSequence
+  return memory
 }
 
 export interface MemoryPacket {
