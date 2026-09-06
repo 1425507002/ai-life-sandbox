@@ -1,7 +1,7 @@
 import type { ActionResult, AgeStage, GameState, MapDiscoveryPolicy, MemoryState, NewLifeSetup, RuleCondition, ScriptPackage, StateDiff, SuggestedAction } from '../types'
 import { generateSuggestedActions } from './suggestionEngine'
 import { compressMemory } from './memory'
-import { blockedAgeMessage, clampAgeToStage, getAgeOptions, getAgeStageDefinition, getAgeStageForAge, getAgeStageProfile, isAgeAllowed } from './ageRules'
+import { blockedAgeMessage, clampAgeToStage, getAgeOptions, getAgeStageDefinition, getAgeStageFocus, getAgeStageForAge, getAgeStageOpening, getAgeStageProfile, isAgeAllowed } from './ageRules'
 import { appendEvent, normalizeEventLedger } from './eventLedger'
 
 const pad = (value: number) => value.toString().padStart(2, '0')
@@ -419,6 +419,7 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
   const requestedAge = hasExplicitAge ? setup.player?.age ?? 18 : (stage === 'adult' ? 18 : getAgeStageDefinition(script, stage).minAge)
   const age = clampAgeToStage(script, Number(requestedAge), stage)
   const options = getAgeOptions(script, selectedMap, stage)
+  const opening = getAgeStageOpening(script, selectedMap, stage)
   const freshNpcs = base.npcs.map((npc) => ({ ...npc, relationship: 0, lastInteraction: '尚未相遇', met: false }))
   const startingLocationName = (selectedMap?.startingLocation ?? base.world.location).split(' · ').at(-1)
   const startingLocationId = base.locations.find((location) => location.name === startingLocationName)?.id ?? base.locations[0]?.id
@@ -451,9 +452,9 @@ export function buildNewLifeState(script: ScriptPackage, setup: NewLifeSetup = {
       ...base.world,
       day: 1,
       time: '清晨 · 07:00',
-      narrative: [...(selectedMap?.opening ?? script.world.opening)],
-      currentFocus: '决定今天从哪里开始',
-      headline: selectedMap?.opening[0] ?? script.world.opening[0] ?? '',
+      narrative: opening,
+      currentFocus: getAgeStageFocus(stage),
+      headline: opening[0] ?? '',
       publicNews: [],
     },
     history: [],

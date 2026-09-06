@@ -225,6 +225,7 @@ export interface ScriptPackage {
   theme: ThemeTokens
   characterCreation?: CharacterCreationConfig
   ageStageActions?: Partial<Record<AgeStage, SuggestedAction[]>>
+  ageStageOpenings?: Partial<Record<AgeStage, string[]>>
   maps?: MapDefinition[]
   rules?: Record<string, ActionRule>
   events?: ScheduledEvent[]
@@ -259,6 +260,7 @@ export interface MapDefinition {
   kind: string
   startingLocation: string
   opening: string[]
+  ageStageOpenings?: Partial<Record<AgeStage, string[]>>
   availableRoles?: string[]
   availableProfessions?: string[]
   seedState: GameState

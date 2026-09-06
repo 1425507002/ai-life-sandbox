@@ -51,11 +51,21 @@ function validateMap(input: unknown, index: number, errors: string[]) {
   }
   if (![input.id, input.title, input.subtitle, input.description, input.region, input.kind, input.startingLocation].every(isString)) errors.push(`${path} 的文本字段格式错误`)
   if (!Array.isArray(input.opening) || !input.opening.every(isString)) errors.push(`${path}.opening 必须是字符串数组`)
+  validateAgeStageOpenings(input.ageStageOpenings, `${path}.ageStageOpenings`, errors)
   if (input.availableRoles !== undefined && (!Array.isArray(input.availableRoles) || !input.availableRoles.every(isString))) errors.push(`${path}.availableRoles 必须是字符串数组`)
   if (input.availableProfessions !== undefined && (!Array.isArray(input.availableProfessions) || !input.availableProfessions.every(isString))) errors.push(`${path}.availableProfessions 必须是字符串数组`)
   if (input.discoveryPolicy !== undefined) validateMapDiscoveryPolicy(input.discoveryPolicy, `${path}.discoveryPolicy`, errors)
   if (!isRecord(input.seedState)) errors.push(`${path}.seedState 必须是对象`)
   else validateState(input.seedState, errors)
+}
+
+function validateAgeStageOpenings(input: unknown, path: string, errors: string[]) {
+  if (input === undefined) return
+  if (!isRecord(input)) { errors.push(`${path} 必须是对象`); return }
+  Object.entries(input).forEach(([stage, opening]) => {
+    if (!AGE_STAGES.includes(stage)) errors.push(`${path}.${stage} 不是受支持的年龄阶段`)
+    if (!Array.isArray(opening) || !opening.every(isString)) errors.push(`${path}.${stage} 必须是字符串数组`)
+  })
 }
 
 function validateMapDiscoveryPolicy(input: unknown, path: string, errors: string[]) {
@@ -104,6 +114,7 @@ export function validateScriptPackage(input: unknown): { valid: boolean; errors:
   }
   if (input.ageStageActions !== undefined && (!isRecord(input.ageStageActions) || Object.entries(input.ageStageActions).some(([stage, actions]) => !AGE_STAGES.includes(stage) || !Array.isArray(actions)))) errors.push('ageStageActions 必须按受支持的年龄阶段提供行动数组')
   if (isRecord(input.ageStageActions)) Object.entries(input.ageStageActions).forEach(([stage, actions]) => { if (AGE_STAGES.includes(stage) && Array.isArray(actions)) actions.forEach((action, index) => validateAction(action, `ageStageActions.${stage}[${index}]`, errors)) })
+  validateAgeStageOpenings(input.ageStageOpenings, 'ageStageOpenings', errors)
   if (input.events !== undefined && (!Array.isArray(input.events) || input.events.some((event) => !isRecord(event) || !isString(event.id) || !isNumber(event.dueTurn) || !isString(event.title) || !isString(event.body) || !Array.isArray(event.tags) || (event.revealsLocationId !== undefined && !isString(event.revealsLocationId))))) errors.push('events 中存在格式错误的延迟事件')
   if (input.maps !== undefined && (!Array.isArray(input.maps) || input.maps.length === 0)) errors.push('maps 必须是至少包含一张地图的数组')
   if (Array.isArray(input.maps)) input.maps.forEach((map, index) => validateMap(map, index, errors))

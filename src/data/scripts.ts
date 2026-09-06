@@ -208,11 +208,23 @@ const westernWorld: ScriptPackage = {
     {
       id: 'mist-town', title: '晨雾镇', subtitle: '北境边缘 · 边境小镇', description: dawnmere.manifest.description,
       region: '北境边缘', kind: '城镇', startingLocation: dawnmere.world.startingLocation, opening: dawnmere.world.opening,
+      ageStageOpenings: {
+        baby: ['晨雾镇的钟声还很远，你先被屋里熟悉的脚步和窗外的微光唤醒。', '你躺在住处柔软的被褥里，照料者的声音比街道更清楚。', '今天不用急着理解整个世界：接受照料、观察声音，或者安稳地睡上一觉。'],
+        child: ['晨雾镇的薄雾贴着屋檐散开，你在熟悉的住处醒来。', '桌上的东西、门外的脚步和窗边的光线，都在帮你慢慢认出这个地方。', '今天可以在附近玩耍、学习，或帮家里做一点力所能及的小事。'],
+        teen: ['晨雾镇的钟声穿过薄雾，你在住处醒来，已经开始认真想自己的方向。', '熟悉的工具、书页和门外的街道都在提醒你，选择要从能承担的事情开始。', '今天可以学习、打听学徒机会，或沿着安全的生活圈走一段。'],
+        elder: ['晨雾镇的薄雾在屋檐间慢慢散开，你在住处醒来。', '身体提醒你放慢一点，但多年的经验也让许多细节比别人更早进入眼里。', '今天可以照顾身体、沿熟悉街道走走，或把一段经验讲给愿意倾听的人。'],
+      },
       availableRoles: dawnmere.characterCreation?.roles, availableProfessions: dawnmere.characterCreation?.professions, discoveryPolicy: mapDiscoveryPolicy, seedState: dawnmere.world.seedState,
     },
     {
       id: 'tide-harbor', title: '灰潮港', subtitle: '西海岸 · 潮汐港口', description: tideglass.manifest.description,
       region: '西海岸', kind: '港口', startingLocation: tideglass.world.startingLocation, opening: tideglass.world.opening,
+      ageStageOpenings: {
+        baby: ['灰潮港的潮声隔着墙传来，你先被熟悉的脚步和微咸的空气唤醒。', '你躺在灯塔街住处的柔软被褥里，远处的船和码头还只是模糊的声音。', '今天只需要接受照料、观察身边的光影，或者安稳地睡上一觉。'],
+        child: ['灰潮港的潮声在清晨涨落，你在灯塔街熟悉的住处醒来。', '绳结、木板和门外来往的脚步，正在帮你一点点认出自己的生活范围。', '今天可以在附近玩耍、学习，或帮家里做一点小事。'],
+        teen: ['灰潮港的潮声从窗外传来，你在灯塔街醒来，开始思考自己将走向哪一条路。', '港口很大，但今天的选择仍要从熟悉的街道和能承担的事情开始。', '你可以学习、打听学徒机会，或沿安全路线探索生活圈边缘。'],
+        elder: ['灰潮港的潮声与风一起穿过清晨，你在灯塔街住处醒来。', '岁月让你熟悉许多潮汐与人情，也提醒你今天要把体力安排得更从容。', '你可以休息、沿熟悉街道走走，或把一段经验传给愿意倾听的人。'],
+      },
       availableRoles: tideglass.characterCreation?.roles, availableProfessions: tideglass.characterCreation?.professions, discoveryPolicy: mapDiscoveryPolicy, seedState: tideglass.world.seedState,
     },
   ],

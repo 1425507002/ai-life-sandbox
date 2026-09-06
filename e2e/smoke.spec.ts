@@ -164,6 +164,8 @@ test('a baby life does not start with adult NPC relationships', async ({ page },
   await page.locator('.life-map-option').filter({ hasText: '灰潮港' }).click()
   await page.getByLabel('年龄阶段').selectOption('baby')
   await page.getByRole('button', { name: '开始这段人生' }).click()
+  await expect(page.locator('body')).toContainText('接受照料')
+  await expect(page.locator('body')).not.toContainText('凉了一半的茶')
   await page.locator('.nav-item').filter({ hasText: '地图' }).click()
   await expect(page.locator('.location-row')).toHaveCount(1)
   await expect(page.getByRole('button', { name: '灯塔街' })).toBeVisible()
