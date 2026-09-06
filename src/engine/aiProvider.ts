@@ -169,6 +169,10 @@ function mentionsHiddenWorldEntity(action: SuggestedAction, state: GameState) {
   return hiddenNames.some((name) => copy.includes(name))
 }
 
+function normalizeActionTitle(title: string) {
+  return title.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+}
+
 export async function generateActionCandidates(config: ProviderConfig, request: ActionCandidatesRequest, signal?: AbortSignal): Promise<SuggestedAction[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
@@ -190,13 +194,17 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
     const parsed = parseJsonContent<{ actions?: unknown }>(content)
     if (!parsed) return null
     if (!Array.isArray(parsed.actions)) return null
-    const seen = new Set<string>()
+    const seenTitles = new Set<string>()
+    const seenRuleIds = new Set<string>()
+    const recentTitles = new Set(request.state.history.slice(0, 12).map((event) => normalizeActionTitle(event.title)).filter(Boolean))
     const candidates = parsed.actions.filter((item): item is SuggestedAction => {
       if (!validateSuggestedAction(item)) return false
       const action = item as SuggestedAction
       const ruleId = action.ruleId ?? action.id
-      if (!ruleIds.has(ruleId) || seen.has(action.title) || mentionsHiddenWorldEntity(action, request.state)) return false
-      seen.add(action.title)
+      const title = normalizeActionTitle(action.title)
+      if (!ruleIds.has(ruleId) || seenRuleIds.has(ruleId) || !title || seenTitles.has(title) || recentTitles.has(title) || mentionsHiddenWorldEntity(action, request.state)) return false
+      seenRuleIds.add(ruleId)
+      seenTitles.add(title)
       return true
     }).map((action, index) => {
       const ruleId = action.ruleId ?? action.id
@@ -205,7 +213,17 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
         ? { ...localAction, title: action.title, description: action.description, id: `ai:${ruleId}:${request.state.turn}:${index}`, ruleId }
         : action
     })
-    return candidates.length ? candidates.slice(0, 6) : null
+    const merged = [...candidates]
+    localCandidates.forEach((localAction) => {
+      if (merged.length >= 6) return
+      const ruleId = localAction.ruleId ?? localAction.id
+      const title = normalizeActionTitle(localAction.title)
+      if (seenRuleIds.has(ruleId) || !title || seenTitles.has(title) || recentTitles.has(title)) return
+      seenRuleIds.add(ruleId)
+      seenTitles.add(title)
+      merged.push(localAction)
+    })
+    return merged.length ? merged.slice(0, 6) : null
   } catch {
     return null
   }

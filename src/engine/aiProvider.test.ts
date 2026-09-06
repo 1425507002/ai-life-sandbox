@@ -225,7 +225,8 @@ describe('checkProviderConnection', () => {
 
     const result = await generateActionCandidates(provider, { state, script, localCandidates: local ? [local] : [] })
 
-    expect(result).toBeNull()
+    expect(result).not.toBeNull()
+    expect(result?.[0]?.title).not.toContain('米拉')
   })
 
   it('keeps local action costs authoritative over AI copy', async () => {
@@ -237,6 +238,28 @@ describe('checkProviderConnection', () => {
     const result = await generateActionCandidates(provider, { state, script, localCandidates: [local] })
 
     expect(result?.[0]).toMatchObject({ title: '改写后的行动', timeCost: local.timeCost, moneyCost: local.moneyCost, staminaCost: local.staminaCost, location: local.location, risk: local.risk })
+  })
+
+  it('deduplicates AI candidates by rule and recent title, then restores omitted local options', async () => {
+    const script = getScript('western-world')
+    const state = buildNewLifeState(script, { mapId: 'mist-town', ageStage: 'adult', player: { name: '候选去重测试' } })
+    const localCandidates = state.suggestedActions.slice(0, 3)
+    const repeated = localCandidates[0]
+    state.history = [{ id: 'recent', title: '已经出现过的行动', body: '', date: '', outcome: 'success', tags: [] }]
+    localCandidates[1] = { ...localCandidates[1], title: '已经出现过的行动' }
+    const sameTitleDifferentRule = localCandidates[2]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [
+      { ...repeated, title: '全新 的行动文案', description: '第一版' },
+      { ...repeated, title: '另一个重复规则文案', description: '第二版' },
+      { ...sameTitleDifferentRule, title: '全新   的行动文案', description: '不同规则但规范化后重复' },
+      { ...localCandidates[1], title: '已经出现过的行动', description: '不应再次出现' },
+    ] }) } }] }), { status: 200 })))
+    const result = await generateActionCandidates(provider, { state, script, localCandidates })
+    expect(result?.map((action) => action.ruleId ?? action.id)).toEqual([repeated.ruleId ?? repeated.id, sameTitleDifferentRule.ruleId ?? sameTitleDifferentRule.id])
+    expect(result?.map((action) => action.title)).toEqual(['全新 的行动文案', sameTitleDifferentRule.title])
+    expect(result?.map((action) => action.title)).not.toContain('全新   的行动文案')
+    expect(new Set(result?.map((action) => action.ruleId ?? action.id)).size).toBe(result?.length)
+    expect(result?.some((action) => action.title === '已经出现过的行动')).toBe(false)
   })
 })
 
