@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from './store'
 import { getScript } from './data/scripts'
+import * as storage from './storage'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -188,6 +189,24 @@ describe('game store', () => {
     const current = useGameStore.getState()
     expect(current.sessions['western-world::default'].state.player.name).toBe('同回合手动修改')
     expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
+  })
+
+  it('persists the latest provider config after a delayed action completes', async () => {
+    vi.stubGlobal('window', {})
+    const saveSpy = vi.spyOn(storage, 'saveRuntime').mockResolvedValue(undefined)
+    let release: (response: Response) => void = () => undefined
+    const pending = new Promise<Response>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn(() => pending))
+    useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'old-model' } })
+
+    const running = useGameStore.getState().runAction('整理工具和窗边')
+    useGameStore.getState().setProviderConfig({ model: 'new-model' })
+    release(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['延迟完成'] }) } }] }), { status: 200 }))
+    await running
+
+    const lastSaved = saveSpy.mock.calls.at(-1)?.[0]
+    expect(lastSaved?.providerConfig.model).toBe('new-model')
+    saveSpy.mockRestore()
   })
 
   it('queues a validated AI incident without letting the model write game state', async () => {

@@ -288,7 +288,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ? { type: 'error' as const, message: '规则已完成，但 AI 服务未响应；已使用本地行动和叙事。' }
       : maybeNarrative || maybeCandidates || incidentResult ? { type: 'success' as const, message: incidentResult ? `行动已结算，AI 提议了一件待发生的小事：${incidentResult.candidate.title}` : '行动已结算，AI 候选与叙事已按规则接入。' } : null
     set({ sessions: nextSessions, lastAction: { title: result.title, feedback: result.feedback, outcome: result.outcome, timeLabel: result.timeLabel, deltas: result.deltas, stateDiff: result.stateDiff }, lastNotice })
-    persist({ sessions: nextSessions, activeScriptId, activeLifeId, providerConfig, actionMode: get().actionMode, uiThemeId: get().uiThemeId, scripts })
+    persist({ sessions: nextSessions, activeScriptId, activeLifeId, providerConfig: latest.providerConfig, actionMode: get().actionMode, uiThemeId: get().uiThemeId, scripts })
   },
   setProviderConfig: (config) => set((state) => {
     const providerConfig = { ...state.providerConfig, ...config }
