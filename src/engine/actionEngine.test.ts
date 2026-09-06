@@ -25,6 +25,14 @@ describe('action engine', () => {
     expect(followUp.outcome).not.toBe('unknown')
   })
 
+  it('keeps the original free-form input for later review', () => {
+    const state = buildNewLifeState(script, { ageStage: 'adult', player: { age: 18 } })
+    const result = resolveAction(state, '  观察窗边的陌生鸟  ', script)
+
+    expect(result.outcome).toBe('unknown')
+    expect(result.state.history[0].input).toBe('  观察窗边的陌生鸟  ')
+  })
+
   it('charges the tavern cost exactly once', () => {
     const harborState = buildInitialState(harborScript, 'tide-harbor')
     const startingMoney = harborState.player.money

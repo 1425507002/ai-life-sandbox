@@ -156,6 +156,25 @@ describe('game store', () => {
     expect(session.state.player.ageStage).toBe('adult')
   })
 
+  it('rejects history entries with a non-string action input during import', () => {
+    vi.stubGlobal('window', {})
+    const validState = structuredClone(getScript('western-world').world.seedState)
+    const malformedHistoryState = { ...structuredClone(validState), history: [{ ...validState.history[0], input: { forged: true } }] }
+
+    useGameStore.getState().importRuntime({
+      format: 'ai-life-world-save',
+      version: 2,
+      activeScriptId: 'western-world',
+      sessions: { malformed: { scriptId: 'western-world', state: malformedHistoryState } },
+      providerConfig: { endpoint: '', apiKey: '', model: '' },
+    })
+
+    const current = useGameStore.getState()
+    expect(current.activeLifeId).toBe('western-world::default')
+    expect(current.sessions[current.activeLifeId].state.history.some((event) => event.input !== undefined && typeof event.input !== 'string')).toBe(false)
+    expect(current.lastNotice?.type).toBe('success')
+  })
+
   it('does not write an AI result into a life changed while the request was pending', async () => {
     vi.stubGlobal('window', {})
     let release: (response: Response) => void = () => undefined

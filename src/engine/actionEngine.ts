@@ -151,7 +151,7 @@ function findAction(state: GameState, input: string): SuggestedAction | string |
   return state.suggestedActions.find((action) => (action.ruleId ?? action.id) === matches[0][0]) ?? matches[0][0]
 }
 
-function genericOutcome(state: GameState, input: string, script: ScriptPackage): ActionResult {
+function genericOutcome(state: GameState, input: string, script: ScriptPackage, originalInput = input): ActionResult {
   const next = cloneState(state)
   next.turn += 1
   const advanced = advanceTime(next, 25)
@@ -160,7 +160,7 @@ function genericOutcome(state: GameState, input: string, script: ScriptPackage):
   next.player.stamina = Math.max(0, next.player.stamina - 3)
   next.world.narrative = [`你决定先观察一下周围，再处理“${input}”这件事。`, '这不是一个能立刻得到答案的行动，但你记下了几个值得继续确认的细节。']
   next.world.currentFocus = `继续确认：${input}`
-  next.history.unshift({ id: `e-${next.turn}-freeform`, turn: next.turn, actionId: `freeform:${input.toLowerCase()}`, input, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
+  next.history.unshift({ id: `e-${next.turn}-freeform`, turn: next.turn, actionId: `freeform:${input.toLowerCase()}`, input: originalInput, date: `第 ${next.world.day} 日 · ${next.world.time}`, title: '留下一个未完成的念头', body: `你尝试了“${input}”，目前还没有足够信息得出明确结论。`, outcome: 'unknown', tags: ['自由行动', '待确认'], stateDiff: stateDiff(state, next) })
   advanceNpcSchedules(next)
   processDueEvents(next, script)
   next.suggestedActions = generateSuggestedActions(next, script)
@@ -272,7 +272,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
     if (getAgeStageForAge(script, state.player.age) !== 'adult') {
       return { outcome: 'refused', title: '先从当前年龄能做的事开始', narrative: [blockedAgeMessage(getAgeStageForAge(script, state.player.age)), '这次自由描述没有对应到已验证的年龄行动，因此没有推进时间，也没有改变状态。'], feedback: '请选择当前年龄阶段的行动入口；等规则确认后，AI 才会继续扩展自由行动。', timeLabel: '未推进时间', deltas: ['年龄阶段未验证'], state }
     }
-    return genericOutcome(state, cleanInput, script)
+    return genericOutcome(state, cleanInput, script, input)
   }
 
   const next = cloneState(state)
@@ -374,7 +374,7 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   scheduleRuleEvent(next, script, actionRule)
   advanceNpcSchedules(next)
   processDueEvents(next, script, revealedLocation ? 1 : 0)
-  next.history.unshift({ id: `e-${next.turn}-${match.id}`, turn: next.turn, actionId: match.id, ruleId: actionRule, input: cleanInput, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
+  next.history.unshift({ id: `e-${next.turn}-${match.id}`, turn: next.turn, actionId: match.id, ruleId: actionRule, input, date: `第 ${next.world.day} 日 · ${next.world.time}`, title, body: next.world.narrative.join(' '), outcome, tags: [match.location, match.risk === '中' ? '风险' : '日常'], stateDiff: stateDiff(state, next) })
   next.suggestedActions = generateSuggestedActions(next, script)
   next.memory = compressMemory(next)
   return { outcome, title, narrative: next.world.narrative, feedback: outcome === 'partial' ? '行动完成了一部分，也留下了新的代价或线索。' : '行动已经结算，世界留下了新的变化。', timeLabel: `约 ${match.timeCost} 分钟`, deltas, stateDiff: stateDiff(state, next), state: next }

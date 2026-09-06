@@ -150,7 +150,7 @@ function hasValidStateCollections(candidate: Partial<GameState>): boolean {
   const historyValid = Array.isArray(candidate.history) && candidate.history.every((value) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false
     const event = value as unknown as Record<string, unknown>
-    return ['id', 'date', 'title', 'body', 'outcome'].every((key) => typeof event[key] === 'string') && Array.isArray(event.tags) && event.tags.every((tag) => typeof tag === 'string')
+    return ['id', 'date', 'title', 'body', 'outcome'].every((key) => typeof event[key] === 'string') && (event.input === undefined || typeof event.input === 'string') && Array.isArray(event.tags) && event.tags.every((tag) => typeof tag === 'string')
   })
   return npcsValid && locationsValid && historyValid
 }
