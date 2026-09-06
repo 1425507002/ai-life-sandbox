@@ -832,6 +832,7 @@ schema 校验与安全过滤
 - [store.ts](./src/store.ts)：运行时状态、本地持久化和剧本切换。
 - [types.ts](./src/types.ts)：核心数据类型。
 - [scripts.ts](./src/data/scripts.ts)：内置原创剧本。
+- [script-concepts/](./script-concepts/)：现代都市、江湖/修行、灾后聚落、航海/边境拓荒四个预设剧本的概念稿，当前不直接加载到 UI。
 - [AGENTS.md](./AGENTS.md)：项目协作、架构和插件调用规则。
 - [e2e/smoke.spec.ts](./e2e/smoke.spec.ts)：桌面和移动端浏览器烟雾测试。
 - [playwright.config.mjs](./playwright.config.mjs)：浏览器测试矩阵和本地静态测试服务器配置。

@@ -84,6 +84,7 @@ src/
   App.tsx                  通用页面壳
   styles.css               原创纸张/手账视觉系统
 design/                    视觉概念稿
+script-concepts/           四个预设剧本的文本概念稿，暂不加载到运行时
 ```
 
 ## 路线
