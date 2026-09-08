@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import { buildInitialState, buildNewLifeState, resolveAction } from './engine/actionEngine'
-import { AI_ENHANCEMENT_TIMEOUT_MS, generateActionCandidates, generateIncident, generateNarration, withModelTimeoutResult, ZHIPU_FLASH_PROVIDER } from './engine/aiProvider'
+import { AI_ENHANCEMENT_TIMEOUT_MS, generateActionCandidates, generateIncident, generateNarration, generateScriptStageDraft, withModelTimeoutResult, ZHIPU_FLASH_PROVIDER } from './engine/aiProvider'
 import { queueIncidentCandidate, validateScheduledEvent } from './engine/incidents'
 import { getAgeOptions, getAgeStageForAge, getAgeStageProfile } from './engine/ageRules'
 import { generateSuggestedActions } from './engine/suggestionEngine'
 import { scriptPackages } from './data/scripts'
 import { loadRuntime, saveRuntime, validateRuntimePayload } from './storage'
 import type { ActionGenerationMode, ActionSummary, GameSession, GameState, NavKey, NewLifeSetup, ProviderConfig, ScriptPackage } from './types'
+import type { ScriptGenerationPreferences, ScriptGenerationReport, ScriptGenerationStage } from './engine/scriptGeneration'
 import { validateScriptPackage, validateSuggestedAction } from './engine/scriptSchema'
 import { isUiThemeId } from './uiThemes'
 import type { UiThemeId } from './types'
@@ -34,6 +35,7 @@ interface GameStore {
   hydrated: boolean
   lastAction: ActionSummary | null
   lastNotice: StoreNotice | null
+  scriptDraft: ScriptGenerationReport | null
   selectScript: (scriptId: string) => void
   selectLife: (lifeId: string) => void
   setNav: (nav: NavKey) => void
@@ -50,6 +52,8 @@ interface GameStore {
   notify: (notice: StoreNotice) => void
   importRuntime: (runtime: unknown) => void
   importScriptPackage: (script: unknown) => boolean
+  generateScriptStage: (stage: ScriptGenerationStage, preferences?: ScriptGenerationPreferences) => Promise<void>
+  clearScriptDraft: () => void
   getExportPayload: () => unknown
 }
 
@@ -242,6 +246,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   hydrated: false,
   lastAction: null,
   lastNotice: null,
+  scriptDraft: null,
   selectScript: (scriptId) => set((state) => {
     if (!state.scripts.some((script) => script.manifest.id === scriptId)) return state
     const existing = Object.values(state.sessions).find((session) => session.scriptId === scriptId)
@@ -251,12 +256,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const sessions = existing ? state.sessions : { ...state.sessions, [lifeId]: { lifeId, scriptId, label: '默认人生', state: initialState, snapshots: [{ turn: initialState.turn, state: initialState }] } }
     const next = { ...state, sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play' as NavKey }
     persist(next)
-    return { ...next, lastNotice: null }
+    return { ...next, scriptDraft: null, lastNotice: null }
   }),
   selectLife: (lifeId) => set((state) => {
     const session = state.sessions[lifeId]
     if (!session) return state
-    const next = { ...state, activeScriptId: session.scriptId, activeLifeId: lifeId, activeNav: 'play' as NavKey, lastAction: null, lastNotice: null }
+    const next = { ...state, activeScriptId: session.scriptId, activeLifeId: lifeId, activeNav: 'play' as NavKey, lastAction: null, scriptDraft: null, lastNotice: null }
     persist(next)
     return next
   }),
@@ -339,7 +344,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const requestedScriptId = runtime?.activeScriptId === 'dawnmere' || runtime?.activeScriptId === 'tideglass' ? 'western-world' : runtime?.activeScriptId
     const activeScriptId = requestedScriptId && scripts.some((script) => script.manifest.id === requestedScriptId) ? requestedScriptId : scripts[0].manifest.id
     const activeLifeId = resolveActiveLifeId(sessions, activeScriptId, runtime?.activeLifeId, runtime?.activeScriptId)
-    set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig: migrateProviderConfig(runtime?.providerConfig), actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', uiThemeId: isUiThemeId(runtime?.uiThemeId) ? runtime.uiThemeId : 'paper-journal', hydrated: true, lastNotice: null })
+    set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig: migrateProviderConfig(runtime?.providerConfig), actionMode: isActionGenerationMode(runtime?.actionMode) ? runtime.actionMode : 'guided', uiThemeId: isUiThemeId(runtime?.uiThemeId) ? runtime.uiThemeId : 'paper-journal', hydrated: true, scriptDraft: null, lastNotice: null })
   },
   resetSession: (scriptId = get().activeScriptId) => set((state) => {
     const script = findScript(state.scripts, scriptId)
@@ -348,7 +353,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const resetState = buildNewLifeState(script, { mapId: activeSession?.state.world.mapId, ageStage: 'adult', player: { name: '未命名人生', age: 18, traits: [] } })
     const sessions = { ...state.sessions, [lifeId]: { lifeId, scriptId, label: activeSession?.label ?? '默认人生', state: resetState, snapshots: [{ turn: resetState.turn, state: resetState }] } }
     persist({ ...state, sessions, activeLifeId: lifeId })
-    return { sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play', lastAction: null, lastNotice: { type: 'info', message: '当前人生已经重新开始。' } }
+    return { sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play', lastAction: null, scriptDraft: null, lastNotice: { type: 'info', message: '当前人生已经重新开始。' } }
   }),
   startNewLife: (setup = {}) => set((state) => {
     const scriptId = setup.scriptId ?? state.activeScriptId
@@ -361,7 +366,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     while (state.sessions[lifeId]) lifeId = `${baseLifeId}-${suffix++}`
     const sessions = { ...state.sessions, [lifeId]: { lifeId, scriptId, label: newState.player.name || '未命名人生', state: newState, snapshots: [{ turn: newState.turn, state: newState }] } }
     persist({ ...state, sessions, activeScriptId: scriptId, activeLifeId: lifeId })
-    return { sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play', lastAction: null, lastNotice: { type: 'success', message: `新人生已从${selectedMap?.title ?? '当前世界'}开始。` } }
+    return { sessions, activeScriptId: scriptId, activeLifeId: lifeId, activeNav: 'play', lastAction: null, scriptDraft: null, lastNotice: { type: 'success', message: `新人生已从${selectedMap?.title ?? '当前世界'}开始。` } }
   }),
   rollbackLife: (turn) => set((state) => {
     const session = state.sessions[state.activeLifeId]
@@ -399,7 +404,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const providerConfig = migrateProviderConfig(candidate.providerConfig)
     const actionMode = isActionGenerationMode(candidate.actionMode) ? candidate.actionMode : 'guided'
     const uiThemeId = isUiThemeId(candidate.uiThemeId) ? candidate.uiThemeId : get().uiThemeId
-    set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, activeNav: 'play', lastNotice: { type: 'success', message: '存档已导入，当前世界已恢复。' } })
+    set({ scripts, sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, activeNav: 'play', scriptDraft: null, lastNotice: { type: 'success', message: '存档已导入，当前世界已恢复。' } })
     persist({ sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, scripts })
   },
   importScriptPackage: (input) => {
@@ -415,10 +420,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const initialState = buildInitialState(script)
       const sessions = { ...state.sessions, [lifeId]: state.sessions[lifeId] ?? { lifeId, scriptId: script.manifest.id, label: '默认人生', state: initialState, snapshots: [{ turn: initialState.turn, state: initialState }] } }
       persist({ ...state, scripts, sessions, activeScriptId: script.manifest.id, activeLifeId: lifeId })
-      return { scripts, sessions, activeScriptId: script.manifest.id, activeLifeId: lifeId, activeNav: 'play' as NavKey, lastAction: null, lastNotice: { type: 'success', message: `剧本「${script.manifest.title}」已加载。` } }
+      return { scripts, sessions, activeScriptId: script.manifest.id, activeLifeId: lifeId, activeNav: 'play' as NavKey, lastAction: null, scriptDraft: null, lastNotice: { type: 'success', message: `剧本「${script.manifest.title}」已加载。` } }
     })
     return true
   },
+  generateScriptStage: async (stage, preferences = {}) => {
+    const { scripts, activeScriptId, providerConfig } = get()
+    const script = findScript(scripts, activeScriptId)
+    const fallback: ScriptGenerationReport = { valid: false, stage, errors: ['AI_TIMEOUT: 剧本阶段生成未完成，当前世界未被修改。'], warnings: [], changedKeys: [] }
+    const result = await withModelTimeoutResult((signal) => generateScriptStageDraft(providerConfig, script, stage, preferences, signal), fallback, 5000)
+    const latest = get()
+    if (latest.activeScriptId !== activeScriptId) return
+    set({ scriptDraft: result.value, lastNotice: result.value.valid ? { type: 'success', message: `「${script.manifest.title}」的${stage}阶段草稿已生成，请先预览并确认。` } : { type: 'error', message: result.value.errors[0] ?? '剧本草稿生成失败，当前世界未被修改。' } })
+  },
+  clearScriptDraft: () => set({ scriptDraft: null }),
   getExportPayload: () => {
     const { sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, scripts } = get()
     return { format: 'ai-life-world-save', version: 2, exportedAt: new Date().toISOString(), sessions, activeScriptId, activeLifeId, providerConfig, actionMode, uiThemeId, scripts }

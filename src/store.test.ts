@@ -100,6 +100,23 @@ describe('game store', () => {
     expect(session.state.suggestedActions.every((action) => action.ruleId?.startsWith('child-'))).toBe(true)
   })
 
+  it('keeps an AI script generation result as a preview until explicit package import', async () => {
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ opening: ['新的都市清晨'], currentFocus: '从社区公告开始认识城市' }) } }] }), { status: 200 })))
+    useGameStore.setState({ activeScriptId: 'urban-life', activeLifeId: 'urban-life::default', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'test' }, scriptDraft: null })
+    const before = useGameStore.getState().sessions['urban-life::default'].state
+
+    await useGameStore.getState().generateScriptStage('world')
+
+    const preview = useGameStore.getState().scriptDraft
+    expect(preview?.valid).toBe(true)
+    expect(preview?.script?.world.opening).toEqual(['新的都市清晨'])
+    expect(useGameStore.getState().sessions['urban-life::default'].state).toEqual(before)
+
+    useGameStore.getState().clearScriptDraft()
+    expect(useGameStore.getState().scriptDraft).toBeNull()
+  })
+
   it('migrates an old unplayed save so seeded NPC relationships are not restored', () => {
     vi.stubGlobal('window', {})
     const legacyState = structuredClone(getScript('western-world').world.seedState)
