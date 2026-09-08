@@ -3,6 +3,7 @@ import { validateSuggestedAction } from './scriptSchema'
 import { buildMemoryPacket } from './memory'
 import { validateIncidentCandidate } from './incidents'
 import { classifyProviderFailure, describeResponseShape, extractCompletionText, formatProviderFailure, normalizeProviderErrorPayload, parseJsonContent, providerErrorDetails, type ProviderFailureInfo } from './providerContract'
+import { applyScriptGenerationStage, buildScriptGenerationRequest, type ScriptGenerationPreferences, type ScriptGenerationReport, type ScriptGenerationStage } from './scriptGeneration'
 
 export const ZHIPU_FLASH_PROVIDER: ProviderConfig = {
   endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -242,6 +243,43 @@ export async function generateActionCandidates(config: ProviderConfig, request: 
 export interface IncidentRequest {
   state: GameState
   script: ScriptPackage
+}
+
+function scriptGenerationFailure(stage: ScriptGenerationStage, error: string): ScriptGenerationReport {
+  return { valid: false, stage, errors: [error], warnings: [], changedKeys: [] }
+}
+
+export async function generateScriptStageDraft(config: ProviderConfig, script: ScriptPackage, stage: ScriptGenerationStage, preferences: ScriptGenerationPreferences = {}, signal?: AbortSignal): Promise<ScriptGenerationReport> {
+  if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return scriptGenerationFailure(stage, 'AI_CONFIG: 请先填写 Endpoint、Model 和 API Key。')
+  const request = buildScriptGenerationRequest(script, stage, preferences)
+  try {
+    const response = await postCompletion(config, {
+      model: config.model,
+      temperature: 0.35,
+      max_tokens: request.maxOutputTokens,
+      messages: [
+        { role: 'system', content: request.systemPrompt },
+        { role: 'user', content: JSON.stringify(request.userPayload) },
+      ],
+      response_format: request.responseFormat,
+    }, signal)
+    const responseText = await response.text()
+    let rawPayload: unknown = null
+    try { rawPayload = JSON.parse(responseText) } catch { /* format error below */ }
+    const normalized = normalizeProviderErrorPayload(rawPayload, [config.apiKey])
+    if (!response.ok) {
+      const failure = classifyProviderFailure(response.status, normalized)
+      return scriptGenerationFailure(stage, `AI_PROVIDER: ${formatProviderFailure(failure)}`)
+    }
+    const content = extractCompletionText(rawPayload)
+    if (!content) return scriptGenerationFailure(stage, `AI_RESPONSE_FORMAT: 未找到可识别的模型文本（HTTP ${response.status}；返回字段：${describeResponseShape(rawPayload)}）。`)
+    const parsed = parseJsonContent<unknown>(content)
+    if (!parsed) return scriptGenerationFailure(stage, 'AI_RESPONSE_FORMAT: 模型文本不是可解析的 JSON 对象。')
+    return applyScriptGenerationStage(script, stage, parsed)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return scriptGenerationFailure(stage, 'AI_TIMEOUT: 剧本阶段生成已超时，当前世界未被修改。')
+    return scriptGenerationFailure(stage, 'AI_NETWORK: 剧本阶段生成请求未完成，当前世界未被修改。')
+  }
 }
 
 export async function generateIncident(config: ProviderConfig, request: IncidentRequest, signal?: AbortSignal): Promise<IncidentCandidate | null> {

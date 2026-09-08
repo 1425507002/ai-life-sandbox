@@ -9,8 +9,8 @@
 - 位置：`C:\Users\li\Documents\ChatGPT\配置环境\ai-life-sandbox`
 - 远程仓库：`https://github.com/1425507002/ai-life-sandbox.git`
 - 分支：`main`
-- 上一次已推送提交：`b3bef22 docs: refine preset scripts and scoring rubric`
-- 本轮文档/夹具修改尚未提交、尚未推送。
+- 上一次已推送提交：`f0cfe4c docs: pass preset script concept gate`
+- 当前阶段 5 代码与文档修改尚未提交、尚未推送，收尾前必须完成测试后再提交。
 - 四个预设剧本的独立评分已完成：最高为《霓虹城的人生》`85.5` 分，达到用户要求的 `85-90` 合格线；概念闸门通过。
 - 该分数只代表概念与规格评审，不代表运行时、浏览器或真实 AI API 已通过。
 
@@ -30,6 +30,7 @@
    - 稳定/专业/关系三条首轮路径的状态差异可纸面复算。
    - child 白名单包含 `weekly-review` 和 `local-notice`，不包含成人行动。
 6. 独立评审智能体已完成并关闭，没有遗留临时智能体。
+7. 阶段 5 已实现首个 AI 剧本生成切片：五阶段协议、字段/长度限制、schema 与引用完整性校验，以及 `generateScriptStageDraft` 模型适配入口；生成结果只形成草稿，不直接写入当前人生。
 
 ## 已验证内容
 
@@ -42,28 +43,26 @@
 - 年龄白名单覆盖 action registry，无缺项。
 - `URBAN-LIFE-REPLAY.md` 中的初始状态与 JSON `initialState` 深度一致。
 - `git diff --check` 通过（只有 Windows 换行提示，无内容错误）。
+- 阶段 5 单元测试：`pnpm test` 通过，101 passed、1 skipped。
+- 阶段 5 生产构建：`pnpm build` 通过，PWA 产物生成成功。
+- 浏览器回归：`pnpm test:e2e` 通过，9 passed、9 skipped；跳过项是当前 Playwright 配置下未启用的移动端重复项目。
 
 ## 当前未完成
 
-- 本轮修改尚未形成 Git 提交。
-- 本轮修改尚未推送 GitHub。
-- 尚未重新运行项目现有的 `pnpm test` 与 `pnpm build` 作为收尾验证。
+- 阶段 5 当前切片尚未形成 Git 提交，尚未推送 GitHub。
+- 尚未完成剧本生成预览、修订、用户确认、导出和加载 UI。
 - 尚未把 JSON 夹具接入真实运行时规则引擎。
-- 尚未做浏览器端三条正常路径、两条失败路径、无 API 十步回放。
+- 尚未做浏览器端三条正常路径、两条失败路径、无 API 十步回放的本轮收尾复测。
 - 尚未做真实模型 API、上下文压缩、长上下文压力和 UI 回归测试。
 - 其他三个剧本仍是概念稿，尚未转成各自的 JSON 夹具；这是后续实施内容，不影响本轮 urban 概念闸门通过。
 
 ## 明日推荐顺序
 
-1. 读取本文件和 `script-concepts/SCRIPT-RANKING.md`，确认工作区未被其它修改覆盖。
-2. 运行 JSON/回放一致性检查与 `git diff --check`。
-3. 在项目根目录运行：
-   - `pnpm test`
-   - `pnpm build`
-4. 检查 `git diff`，确认只包含本轮预期的剧本文档、评分、回放和 JSON 夹具。
-5. 提交一个独立里程碑提交，例如：`docs: pass preset script concept gate`。
-6. 按项目 Git 规则推送 `main`，然后用 `git status`、`git log` 和 `git ls-remote` 核验远程已更新。
-7. 下一阶段再开始把 urban 夹具接入运行时，并用浏览器做真实回放；不要把本轮纸面评分当作运行时通过。
+1. 运行 `pnpm test`、`pnpm build` 和 `pnpm test:e2e`，确认阶段 5 代码没有回归。
+2. 检查 `git diff --check` 与差异范围，确认只包含生成协议、适配器测试和交接文档。
+3. 提交独立里程碑：`feat: add staged script generation protocol`。
+4. 推送 `main`，再用 `git status`、`git log` 和 `git ls-remote` 核验远程已更新。
+5. 下一步增加剧本生成预览/修订/确认 UI；不要把当前草稿接口误认为完整生成器。
 
 ## 重要边界
 

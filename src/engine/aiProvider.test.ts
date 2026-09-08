@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AI_ENHANCEMENT_TIMEOUT_MS, checkProviderConnection, generateActionCandidates, generateIncident, generateNarration, withModelTimeout, withModelTimeoutResult } from './aiProvider'
+import { AI_ENHANCEMENT_TIMEOUT_MS, checkProviderConnection, generateActionCandidates, generateIncident, generateNarration, generateScriptStageDraft, withModelTimeout, withModelTimeoutResult } from './aiProvider'
 import { buildInitialState, buildNewLifeState } from './actionEngine'
 import { getScript } from '../data/scripts'
 import { classifyProviderFailure, extractCompletionText, parseJsonContent } from './providerContract'
@@ -271,6 +271,38 @@ describe('checkProviderConnection', () => {
     expect(result?.map((action) => action.title)).not.toContain('全新   的行动文案')
     expect(new Set(result?.map((action) => action.ruleId ?? action.id)).size).toBe(result?.length)
     expect(result?.some((action) => action.title === '已经出现过的行动')).toBe(false)
+  })
+
+  it('validates a staged script response before returning a draft package', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ opening: ['AI 生成的开场'], currentFocus: '观察今天的生活变化' }) } }] }), { status: 200 })))
+
+    const result = await generateScriptStageDraft(provider, getScript('western-world'), 'world')
+
+    expect(result.valid).toBe(true)
+    expect(result.changedKeys).toEqual(['opening', 'currentFocus'])
+    expect(result.script?.world.opening).toEqual(['AI 生成的开场'])
+    expect(result.script?.manifest.id).toBe('western-world')
+  })
+
+  it('keeps an invalid staged response out of the runtime package', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ events: [], sessions: {} }) } }] }), { status: 200 })))
+
+    const result = await generateScriptStageDraft(provider, getScript('western-world'), 'events')
+
+    expect(result.valid).toBe(false)
+    expect(result.script).toBeUndefined()
+    expect(result.errors.some((error) => error.includes('AI_STATE_WRITE'))).toBe(true)
+  })
+
+  it('does not call the provider when the generation key is missing', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateScriptStageDraft({ ...provider, apiKey: '' }, getScript('western-world'), 'maps')
+
+    expect(result).toMatchObject({ valid: false, stage: 'maps' })
+    expect(result.errors[0]).toContain('AI_CONFIG')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
