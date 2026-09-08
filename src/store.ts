@@ -304,7 +304,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const aiConfigured = Boolean(providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim())
     const enhancementTimedOut = narrativeAttempt.timedOut || candidateAttempt.timedOut || incidentAttempt.timedOut
     const lastNotice = aiConfigured && !maybeNarrative && !maybeCandidates && !incidentResult
-      ? { type: 'error' as const, message: enhancementTimedOut ? `规则已完成，但 AI 增强超过 ${AI_ENHANCEMENT_TIMEOUT_MS} 毫秒；已使用本地行动和叙事。` : '规则已完成，但 AI 服务未响应；已使用本地行动和叙事。' }
+      ? { type: 'error' as const, message: enhancementTimedOut ? `规则已完成，但 AI 在 ${AI_ENHANCEMENT_TIMEOUT_MS} 毫秒内未返回；本回合仅保留规则结算，未伪造 AI 内容。` : '规则已完成，但 AI 服务未返回有效内容；本回合仅保留规则结算。' }
       : maybeNarrative || maybeCandidates || incidentResult ? { type: 'success' as const, message: incidentResult ? `行动已结算，AI 提议了一件待发生的小事：${incidentResult.candidate.title}` : '行动已结算，AI 候选与叙事已按规则接入。' } : null
     set({ sessions: nextSessions, lastAction: { title: result.title, feedback: result.feedback, outcome: result.outcome, timeLabel: result.timeLabel, deltas: result.deltas, stateDiff: result.stateDiff }, lastNotice })
     persist({ sessions: nextSessions, activeScriptId, activeLifeId, providerConfig: latest.providerConfig, actionMode: get().actionMode, uiThemeId: get().uiThemeId, scripts })

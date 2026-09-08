@@ -125,7 +125,7 @@ test('slow model enhancement never blocks local action settlement beyond five se
   await page.locator('.action-card').first().click()
   await expect(page.locator('.action-feedback')).toBeVisible()
   expect(Date.now() - startedAt).toBeLessThan(5000)
-  await expect(page.locator('body')).toContainText('AI 增强超过')
+  await expect(page.locator('body')).toContainText('仅保留规则结算')
   await expect(page.locator('.action-feedback')).toContainText('行动已经结算')
 })
 

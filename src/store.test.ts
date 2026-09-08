@@ -282,7 +282,9 @@ describe('game store', () => {
 
       const current = useGameStore.getState()
       expect(current.sessions['western-world::default'].state.turn).toBeGreaterThan(0)
-      expect(current.lastNotice?.message).toContain('AI 增强超过')
+      expect(current.lastNotice?.message).toContain('AI 在')
+      expect(current.lastNotice?.message).toContain('仅保留规则结算')
+      expect(current.lastNotice?.message).toContain('未伪造 AI 内容')
       expect(current.lastNotice?.message).toContain(String(AI_ENHANCEMENT_TIMEOUT_MS))
     } finally {
       vi.useRealTimers()

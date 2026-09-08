@@ -46,6 +46,20 @@ describe('checkProviderConnection', () => {
     }
   })
 
+  it('keeps a short real-provider response instead of timing it out early', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = withModelTimeoutResult(
+        () => new Promise<string>((resolve) => setTimeout(() => resolve('AI 叙事'), 3000)),
+        '规则结算',
+      )
+      await vi.advanceTimersByTimeAsync(3000)
+      await expect(pending).resolves.toEqual({ value: 'AI 叙事', timedOut: false })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('forwards the gameplay abort signal to the real provider fetch', async () => {
     vi.useFakeTimers()
     let receivedSignal: AbortSignal | undefined
