@@ -9,10 +9,12 @@
 - 位置：`C:\Users\li\Documents\ChatGPT\配置环境\ai-life-sandbox`
 - 远程仓库：`https://github.com/1425507002/ai-life-sandbox.git`
 - 分支：`main`
-- 上一次已推送提交：`f0cfe4c docs: pass preset script concept gate`
-- 当前阶段 5 代码与文档修改尚未提交、尚未推送，收尾前必须完成测试后再提交。
+- 当前已推送提交：`58ca214 feat: add script library and draft preview UI`
+- 第七阶段本地验收已通过：最终回归、生产构建、浏览器验收、文档归档均完成，待提交并核验远程。
 - 四个预设剧本的独立评分已完成：最高为《霓虹城的人生》`85.5` 分，达到用户要求的 `85-90` 合格线；概念闸门通过。
-- 该分数只代表概念与规格评审，不代表运行时、浏览器或真实 AI API 已通过。
+- 运行时预设只新增达到门槛且标记为 `verified` 的《霓虹城的人生》；另外三个概念稿不进入内置剧本库。
+- `western-world` 作为此前已有的基线世界保留，避免删除用户已有存档；它不代表本轮新剧本评分通过。
+- 85.5 分只代表概念与规格评审，运行时、浏览器和真实 AI API 仍需分别看测试结果。
 
 ## 本轮已完成
 
@@ -31,6 +33,8 @@
    - child 白名单包含 `weekly-review` 和 `local-notice`，不包含成人行动。
 6. 独立评审智能体已完成并关闭，没有遗留临时智能体。
 7. 阶段 5 已实现首个 AI 剧本生成切片：五阶段协议、字段/长度限制、schema 与引用完整性校验，以及 `generateScriptStageDraft` 模型适配入口；生成结果只形成草稿，不直接写入当前人生。
+8. 阶段 6 已完成剧本库、≥85 分剧本筛选、剧本加载、AI 草稿预览、确认加载和浏览器回归。
+9. 阶段 7 已通过最终验收：只允许通过评分闸门的内置剧本进入运行时，其他剧本保留为研究稿。
 
 ## 已验证内容
 
@@ -43,26 +47,29 @@
 - 年龄白名单覆盖 action registry，无缺项。
 - `URBAN-LIFE-REPLAY.md` 中的初始状态与 JSON `initialState` 深度一致。
 - `git diff --check` 通过（只有 Windows 换行提示，无内容错误）。
-- 阶段 5 单元测试：`pnpm test` 通过，101 passed、1 skipped。
+- 阶段 5 单元测试：`pnpm test` 通过，108 passed、1 skipped。
 - 阶段 5 生产构建：`pnpm build` 通过，PWA 产物生成成功。
-- 浏览器回归：`pnpm test:e2e` 通过，9 passed、9 skipped；跳过项是当前 Playwright 配置下未启用的移动端重复项目。
+- 阶段 6 浏览器回归：`pnpm test:e2e` 通过，10 passed、10 skipped；跳过项是当前 Playwright 配置下未启用的移动端重复项目。
+- 阶段 6 已提交并推送：`58ca214 feat: add script library and draft preview UI`。
+- 阶段 7 最终回归：`pnpm test` 为 108 passed、1 skipped；`pnpm build` 通过；`pnpm test:e2e` 为 10 passed、10 skipped。
 
-## 当前未完成
+## 第七阶段验收边界
 
-- 阶段 5 当前切片尚未形成 Git 提交，尚未推送 GitHub。
-- 尚未完成剧本生成预览、修订、用户确认、导出和加载 UI。
-- 尚未把 JSON 夹具接入真实运行时规则引擎。
-- 尚未做浏览器端三条正常路径、两条失败路径、无 API 十步回放的本轮收尾复测。
-- 尚未做真实模型 API、上下文压缩、长上下文压力和 UI 回归测试。
-- 其他三个剧本仍是概念稿，尚未转成各自的 JSON 夹具；这是后续实施内容，不影响本轮 urban 概念闸门通过。
+- 最终回归必须覆盖：内置剧本筛选、剧本加载、出生阶段、地图/人物隐藏规则、行动结算、AI 草稿预览与确认、刷新存档和移动/桌面核心流程。
+- AI 草稿只能进入预览，用户确认且通过校验后才能加载；不能直接修改当前 `GameState`。
+- 无 API、超时、非 JSON 和服务端错误必须保留本地规则路径，并给出可理解反馈。
+- 其他三个低于 85 分的概念只保留在 `script-concepts/`，不得被 UI 当作可玩的内置剧本。
+- 真实供应商 API、长上下文压力和正式封闭测试属于后续阶段，不在本次第七阶段的本地验收结论中冒充已完成。
 
-## 明日推荐顺序
+## 七阶段提交记录
 
-1. 运行 `pnpm test`、`pnpm build` 和 `pnpm test:e2e`，确认阶段 5 代码没有回归。
-2. 检查 `git diff --check` 与差异范围，确认只包含生成协议、适配器测试和交接文档。
-3. 提交独立里程碑：`feat: add staged script generation protocol`。
-4. 推送 `main`，再用 `git status`、`git log` 和 `git ls-remote` 核验远程已更新。
-5. 下一步增加剧本生成预览/修订/确认 UI；不要把当前草稿接口误认为完整生成器。
+- 阶段 1：`d25f37c`，并标记 `v0.2-ui-script-loading-base`
+- 阶段 2：`453e53b`，加入达到评分门槛的都市人生运行时剧本
+- 阶段 3：`590622a`，补充剧本加载与规则回归
+- 阶段 4：`4318543`，加入 AI 分阶段草稿安全协议
+- 阶段 5：`a89d427`，接入达到门槛剧本的确定性行动规则
+- 阶段 6：`58ca214`，加入剧本库、加载入口和 AI 草稿预览/确认 UI
+- 阶段 7：本轮文档与验收里程碑待提交，提交后再核验 `origin/main`
 
 ## 重要边界
 
