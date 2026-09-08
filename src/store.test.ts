@@ -68,6 +68,38 @@ describe('game store', () => {
     expect(session.state.npcs.every((npc) => npc.met === false)).toBe(true)
   })
 
+  it('loads the verified urban script without changing the western baseline life', () => {
+    vi.stubGlobal('window', {})
+    const westernBefore = useGameStore.getState().sessions['western-world::default'].state
+
+    useGameStore.getState().selectScript('urban-life')
+
+    const current = useGameStore.getState()
+    const urbanSession = current.sessions[current.activeLifeId]
+    expect(current.activeScriptId).toBe('urban-life')
+    expect(urbanSession.scriptId).toBe('urban-life')
+    expect(urbanSession.state.world.mapId).toBe('old-bridge')
+    expect(urbanSession.state.world.location).toBe('霓虹城 · 旧桥居所')
+    expect(urbanSession.state.npcs.every((npc) => npc.met === false)).toBe(true)
+    expect(useGameStore.getState().sessions['western-world::default'].state).toEqual(westernBefore)
+  })
+
+  it('starts a separate urban child life with one known location and age-safe choices', () => {
+    vi.stubGlobal('window', {})
+    useGameStore.getState().selectScript('urban-life')
+    useGameStore.getState().startNewLife({ scriptId: 'urban-life', mapId: 'old-bridge', ageStage: 'child', player: { name: '旧桥小居民', age: 7 } })
+
+    const current = useGameStore.getState()
+    const session = current.sessions[current.activeLifeId]
+    expect(session.scriptId).toBe('urban-life')
+    expect(session.state.player.ageStage).toBe('child')
+    expect(session.state.player.maxHealth).toBe(65)
+    expect(session.state.player.maxStamina).toBe(45)
+    expect(session.state.locations.filter((location) => location.discovered !== false)).toHaveLength(1)
+    expect(session.state.npcs.every((npc) => npc.met === false && npc.relationship === 0)).toBe(true)
+    expect(session.state.suggestedActions.every((action) => action.ruleId?.startsWith('child-'))).toBe(true)
+  })
+
   it('migrates an old unplayed save so seeded NPC relationships are not restored', () => {
     vi.stubGlobal('window', {})
     const legacyState = structuredClone(getScript('western-world').world.seedState)
