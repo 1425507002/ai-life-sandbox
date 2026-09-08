@@ -31,7 +31,7 @@ test('desktop core life loop and settings', async ({ page }, testInfo) => {
   await page.locator('.action-mode-option').filter({ hasText: '自由行动' }).click()
   await page.locator('.nav-item').filter({ hasText: '当前场景' }).click()
   await expect(page.getByRole('textbox', { name: '输入你的行动' })).toBeVisible()
-  await expect(page.locator('#script-switcher option')).toHaveCount(1)
+  await expect(page.locator('#script-switcher option')).toHaveCount(2)
   await page.locator('.nav-item').filter({ hasText: '角色' }).click()
   await page.getByRole('button', { name: '重新开始人生' }).click()
   await expect(page.getByRole('heading', { name: '开始一段新人生' })).toBeVisible()
@@ -175,4 +175,32 @@ test('a baby life does not start with adult NPC relationships', async ({ page },
   const cards = page.locator('.person-card')
   await expect(cards).toHaveCount(0)
   await expect(page.getByText('还没有认识这里的人')).toBeVisible()
+})
+
+test('verified script library loads urban life and previews an AI stage draft', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only script library flow')
+  await page.route('**/api/ai-proxy/zhipu', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ opening: ['新的都市清晨'], currentFocus: '从社区公告开始认识城市' }) } }] }),
+    })
+  })
+  await page.goto('/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await expect(page.getByRole('heading', { name: '剧本库' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '霓虹城的人生' })).toBeVisible()
+  await expect(page.getByText('85.5 分通过')).toBeVisible()
+  await page.getByRole('button', { name: '加载这个剧本' }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: '霓虹城' })).toBeVisible()
+
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 Endpoint').fill('http://127.0.0.1:4175/api/ai-proxy/zhipu')
+  await page.getByLabel('模型名称').fill('urban-script-test-model')
+  await page.getByLabel('模型 API Key').fill('ui-stage-test-key-only')
+  await page.getByRole('button', { name: '生成阶段草稿' }).click()
+  await expect(page.locator('.script-draft-preview')).toContainText('已通过校验')
+  await expect(page.locator('.draft-summary')).toContainText('urban-life')
+  await page.getByRole('button', { name: '确认并加载为剧本版本' }).click()
+  await expect(page.getByRole('main').getByRole('heading', { name: '霓虹城' })).toBeVisible()
 })
