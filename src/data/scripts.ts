@@ -1,4 +1,5 @@
 import type { MapDiscoveryPolicy, ScriptPackage } from '../types'
+import { neonCity } from './verifiedScripts'
 
 const dawnmere: ScriptPackage = {
   manifest: {
@@ -248,7 +249,8 @@ const westernWorld: ScriptPackage = {
   },
 }
 
-export const scriptPackages: ScriptPackage[] = [westernWorld]
+export const verifiedScriptPackages: ScriptPackage[] = [neonCity]
+export const scriptPackages: ScriptPackage[] = [westernWorld, ...verifiedScriptPackages]
 
 export function getScript(scriptId: string) {
   if (scriptId === 'dawnmere' || scriptId === 'tideglass') return westernWorld

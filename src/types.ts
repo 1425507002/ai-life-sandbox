@@ -221,6 +221,10 @@ export interface ScriptPackage {
     author: string
     description: string
     capabilities: string[]
+    /** Independent concept score; only verified scripts are shown as selectable presets. */
+    score?: number
+    category?: string
+    readiness?: 'baseline' | 'verified'
   }
   theme: ThemeTokens
   characterCreation?: CharacterCreationConfig
