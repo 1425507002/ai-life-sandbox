@@ -19,8 +19,8 @@ Set-Location -LiteralPath $repoPath
 $listening = Get-NetTCPConnection -LocalPort 4174 -State Listen -ErrorAction SilentlyContinue
 if (-not $listening) {
   Write-Host 'Starting AI Life Sandbox dev server...' -ForegroundColor Cyan
-  $command = "Set-Location -LiteralPath '$repoPath'; pnpm dev"
-  Start-Process powershell.exe -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $command) | Out-Null
+  $command = "cd /d `"$repoPath`" && pnpm dev"
+  Start-Process cmd.exe -ArgumentList @('/k', $command) | Out-Null
 }
 
 $ready = $false
