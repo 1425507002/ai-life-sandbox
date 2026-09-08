@@ -6,6 +6,11 @@ import { AI_ENHANCEMENT_TIMEOUT_MS } from './engine/aiProvider'
 
 afterEach(() => vi.unstubAllGlobals())
 
+async function flushBackgroundEnhancement() {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+}
+
 describe('game store', () => {
   it('returns to the playable scene when restarting the current life', () => {
     vi.stubGlobal('window', {})
@@ -245,10 +250,11 @@ describe('game store', () => {
     const changedLifeId = useGameStore.getState().activeLifeId
     release(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['不会写回旧人生'] }) } }] }), { status: 200 }))
     await running
+    await flushBackgroundEnhancement()
 
     const current = useGameStore.getState()
     expect(current.activeLifeId).toBe(changedLifeId)
-    expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
+    expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn + 1)
     expect(current.lastAction).toBeNull()
   })
 
@@ -263,10 +269,11 @@ describe('game store', () => {
     useGameStore.getState().updatePlayer({ name: '同回合手动修改' })
     release(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['旧 AI 叙事'] }) } }] }), { status: 200 }))
     await running
+    await flushBackgroundEnhancement()
 
     const current = useGameStore.getState()
     expect(current.sessions['western-world::default'].state.player.name).toBe('同回合手动修改')
-    expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn)
+    expect(current.sessions['western-world::default'].state.turn).toBe(originalTurn + 1)
   })
 
   it('explains an enhancement timeout while keeping the local settlement', async () => {
@@ -281,7 +288,9 @@ describe('game store', () => {
       await running
 
       const current = useGameStore.getState()
-      expect(current.sessions['western-world::default'].state.turn).toBeGreaterThan(0)
+      const state = current.sessions['western-world::default'].state
+      expect(state.turn).toBeGreaterThan(0)
+      expect(state.world.narrative).toEqual(['AI 未返回本回合叙事。', '规则结果已保存；你可以继续选择已验证行动。'])
       expect(current.lastNotice?.message).toContain('AI 在')
       expect(current.lastNotice?.message).toContain('仅保留规则结算')
       expect(current.lastNotice?.message).toContain('未伪造 AI 内容')
@@ -303,6 +312,7 @@ describe('game store', () => {
     useGameStore.getState().setProviderConfig({ model: 'new-model' })
     release(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['延迟完成'] }) } }] }), { status: 200 }))
     await running
+    await flushBackgroundEnhancement()
 
     const lastSaved = saveSpy.mock.calls.at(-1)?.[0]
     expect(lastSaved?.providerConfig.model).toBe('new-model')
@@ -322,6 +332,7 @@ describe('game store', () => {
     useGameStore.setState({ activeScriptId: 'western-world', activeLifeId: 'western-world::default', activeNav: 'play', providerConfig: { endpoint: 'https://example.test/v1/chat/completions', apiKey: 'test', model: 'test' } })
     useGameStore.getState().startNewLife({ ageStage: 'adult', player: { name: '突发事件测试' } })
     await useGameStore.getState().runAction('整理工具和窗边')
+    await flushBackgroundEnhancement()
     randomSpy.mockRestore()
 
     const session = useGameStore.getState().sessions[useGameStore.getState().activeLifeId]

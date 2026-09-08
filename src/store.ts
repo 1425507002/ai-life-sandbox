@@ -231,7 +231,7 @@ function isActionGenerationMode(input: unknown): input is ActionGenerationMode {
 }
 
 function persist(state: Pick<GameStore, 'sessions' | 'activeScriptId' | 'activeLifeId' | 'providerConfig' | 'actionMode' | 'uiThemeId' | 'scripts'>) {
-  void saveRuntime({ sessions: state.sessions, activeScriptId: state.activeScriptId, activeLifeId: state.activeLifeId, providerConfig: state.providerConfig, actionMode: state.actionMode, uiThemeId: state.uiThemeId, scripts: state.scripts })
+  void saveRuntime({ sessions: state.sessions, activeScriptId: state.activeScriptId, activeLifeId: state.activeLifeId, providerConfig: state.providerConfig, actionMode: state.actionMode, uiThemeId: state.uiThemeId, scripts: state.scripts }).catch(() => undefined)
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -280,34 +280,56 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const session = sessions[activeLifeId]
     if (!session) return
     const result = resolveAction(session.state, input, script)
-    const requestIncident = result.outcome !== 'refused' && Boolean(script.incidentPolicy?.enabled && providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim() && session.state.turn % 4 === 0 && Math.random() < (script.incidentPolicy?.chance ?? 0))
-    const [narrativeAttempt, candidateAttempt, incidentAttempt] = result.outcome !== 'refused' ? await Promise.all([
-      withModelTimeoutResult((signal) => generateNarration(providerConfig, { input, result: result.narrative, state: result.state }, signal), null),
-      withModelTimeoutResult((signal) => generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }, signal), null),
-      requestIncident ? withModelTimeoutResult((signal) => generateIncident(providerConfig, { state: result.state, script }, signal), null) : Promise.resolve({ value: null, timedOut: false }),
-    ]) : [{ value: null, timedOut: false }, { value: null, timedOut: false }, { value: null, timedOut: false }] as const
-    const maybeNarrative = narrativeAttempt.value
-    const maybeCandidates = candidateAttempt.value
-    const maybeIncident = incidentAttempt.value
-    const incidentResult = maybeIncident ? queueIncidentCandidate(result.state, maybeIncident, script.incidentPolicy?.maxScheduled ?? 8, script) : null
-    const resolvedState = incidentResult?.state ?? result.state
-    const finalState: GameState = {
-      ...resolvedState,
-      ...(maybeNarrative ? { world: { ...resolvedState.world, narrative: maybeNarrative } } : {}),
-      ...(maybeCandidates ? { suggestedActions: maybeCandidates } : {}),
-    }
-    const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }]), { turn: finalState.turn, state: finalState }].slice(-25)
     const latest = get()
     const latestSession = latest.sessions[activeLifeId]
-    if (latest.activeScriptId !== activeScriptId || latest.activeLifeId !== activeLifeId || !latestSession || latestSession.state !== session.state || latestSession.state.turn !== session.state.turn) return
-    const nextSessions = { ...latest.sessions, [activeLifeId]: { ...latestSession, state: finalState, snapshots } }
     const aiConfigured = Boolean(providerConfig.apiKey.trim() && providerConfig.endpoint.trim() && providerConfig.model.trim())
-    const enhancementTimedOut = narrativeAttempt.timedOut || candidateAttempt.timedOut || incidentAttempt.timedOut
-    const lastNotice = aiConfigured && !maybeNarrative && !maybeCandidates && !incidentResult
-      ? { type: 'error' as const, message: enhancementTimedOut ? `规则已完成，但 AI 在 ${AI_ENHANCEMENT_TIMEOUT_MS} 毫秒内未返回；本回合仅保留规则结算，未伪造 AI 内容。` : '规则已完成，但 AI 服务未返回有效内容；本回合仅保留规则结算。' }
-      : maybeNarrative || maybeCandidates || incidentResult ? { type: 'success' as const, message: incidentResult ? `行动已结算，AI 提议了一件待发生的小事：${incidentResult.candidate.title}` : '行动已结算，AI 候选与叙事已按规则接入。' } : null
-    set({ sessions: nextSessions, lastAction: { title: result.title, feedback: result.feedback, outcome: result.outcome, timeLabel: result.timeLabel, deltas: result.deltas, stateDiff: result.stateDiff }, lastNotice })
+    const shouldEnhance = result.outcome !== 'refused' && aiConfigured
+    const displayState: GameState = shouldEnhance
+      ? { ...result.state, world: { ...result.state.world, narrative: ['规则已完成，AI 叙事正在生成…'] } }
+      : result.state
+    if (latest.activeScriptId !== activeScriptId || latest.activeLifeId !== activeLifeId || !latestSession || latestSession.state !== session.state || latestSession.state.turn !== session.state.turn) return
+    const snapshots = [...(session.snapshots ?? [{ turn: session.state.turn, state: session.state }]), { turn: displayState.turn, state: displayState }].slice(-25)
+    const nextSessions = { ...latest.sessions, [activeLifeId]: { ...latestSession, state: displayState, snapshots } }
+    set({
+      sessions: nextSessions,
+      lastAction: { title: result.title, feedback: result.feedback, outcome: result.outcome, timeLabel: result.timeLabel, deltas: result.deltas, stateDiff: result.stateDiff },
+      lastNotice: shouldEnhance ? { type: 'info', message: '规则已完成，AI 正在生成叙事和下一步行动…' } : null,
+    })
     persist({ sessions: nextSessions, activeScriptId, activeLifeId, providerConfig: latest.providerConfig, actionMode: get().actionMode, uiThemeId: get().uiThemeId, scripts })
+    if (!shouldEnhance) return
+
+    void (async () => {
+      const requestIncident = Boolean(script.incidentPolicy?.enabled && session.state.turn % 4 === 0 && Math.random() < (script.incidentPolicy?.chance ?? 0))
+      const [narrativeAttempt, candidateAttempt, incidentAttempt] = await Promise.all([
+        withModelTimeoutResult((signal) => generateNarration(providerConfig, { input, result: result.narrative, state: result.state }, signal), null),
+        withModelTimeoutResult((signal) => generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }, signal), null),
+        requestIncident ? withModelTimeoutResult((signal) => generateIncident(providerConfig, { state: result.state, script }, signal), null) : Promise.resolve({ value: null, timedOut: false }),
+      ])
+      const maybeNarrative = narrativeAttempt.value
+      const maybeCandidates = candidateAttempt.value
+      const maybeIncident = incidentAttempt.value
+      const incidentResult = maybeIncident ? queueIncidentCandidate(result.state, maybeIncident, script.incidentPolicy?.maxScheduled ?? 8, script) : null
+      const resolvedState = incidentResult?.state ?? result.state
+      const hasAiResult = Boolean(maybeNarrative || maybeCandidates || incidentResult)
+      const finalState: GameState = {
+        ...resolvedState,
+        world: maybeNarrative
+          ? { ...resolvedState.world, narrative: maybeNarrative }
+          : { ...resolvedState.world, narrative: ['AI 未返回本回合叙事。', '规则结果已保存；你可以继续选择已验证行动。'] },
+        ...(maybeCandidates ? { suggestedActions: maybeCandidates } : {}),
+      }
+      const current = get()
+      const currentSession = current.sessions[activeLifeId]
+      if (current.activeScriptId !== activeScriptId || current.activeLifeId !== activeLifeId || !currentSession || currentSession.state !== displayState || currentSession.state.turn !== displayState.turn) return
+      const finalSnapshots = [...(currentSession.snapshots ?? [{ turn: displayState.turn, state: displayState }]), { turn: finalState.turn, state: finalState }].slice(-25)
+      const finalSessions = { ...current.sessions, [activeLifeId]: { ...currentSession, state: finalState, snapshots: finalSnapshots } }
+      const enhancementTimedOut = narrativeAttempt.timedOut || candidateAttempt.timedOut || incidentAttempt.timedOut
+      const lastNotice = !hasAiResult
+        ? { type: 'error' as const, message: enhancementTimedOut ? `规则已完成，但 AI 在 ${AI_ENHANCEMENT_TIMEOUT_MS} 毫秒内未返回；本回合仅保留规则结算，未伪造 AI 内容。` : '规则已完成，但 AI 服务未返回有效内容；本回合仅保留规则结算。' }
+        : { type: 'success' as const, message: incidentResult ? `行动已结算，AI 提议了一件待发生的小事：${incidentResult.candidate.title}` : 'AI 叙事与行动候选已更新。' }
+      set({ sessions: finalSessions, lastNotice })
+      persist({ sessions: finalSessions, activeScriptId, activeLifeId, providerConfig: current.providerConfig, actionMode: current.actionMode, uiThemeId: current.uiThemeId, scripts: current.scripts })
+    })()
   },
   setProviderConfig: (config) => set((state) => {
     const providerConfig = { ...state.providerConfig, ...config }
