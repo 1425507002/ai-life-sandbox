@@ -245,4 +245,30 @@ describe('action engine', () => {
     expect(result.state.turn).toBe(state.turn)
     expect(result.state.world.location).toBe(state.world.location)
   })
+
+  it('settles verified urban actions and reveals locations through deterministic rules', () => {
+    const urban = getScript('urban-life')
+    const state = buildNewLifeState(urban, { ageStage: 'adult', player: { name: '都市测试', age: 22 } })
+    const observe = state.suggestedActions.find((action) => action.ruleId === 'urban-observe')
+    expect(observe).toBeDefined()
+
+    const result = resolveAction(state, observe!.title, urban)
+
+    expect(result.outcome).toBe('success')
+    expect(result.narrative.length).toBeGreaterThan(0)
+    expect(result.state.locations.find((location) => location.id === 'urban-square')?.discovered).toBe(true)
+    expect(result.state.history[0].ruleId).toBe('urban-observe')
+    expect(result.state.player.money).toBe(20)
+  })
+
+  it('keeps hidden urban NPCs out of relationships until the encounter action resolves', () => {
+    const urban = getScript('urban-life')
+    const state = buildNewLifeState(urban, { ageStage: 'adult', player: { name: '关系测试', age: 25 } })
+    const meet = state.suggestedActions.find((action) => action.ruleId === 'urban-meet')
+    expect(state.npcs.every((npc) => npc.met === false)).toBe(true)
+
+    const result = resolveAction(state, meet!.title, urban)
+
+    expect(result.state.npcs.find((npc) => npc.id === 'npc-lin')).toMatchObject({ met: true, relationship: 40 })
+  })
 })

@@ -254,6 +254,67 @@ function resolveAgeAction(next: GameState, actionRule: string) {
   return { outcome, narrative, deltas }
 }
 
+function resolveVerifiedScriptAction(next: GameState, actionRule: string, script: ScriptPackage) {
+  if (script.manifest.id !== 'urban-life') return null
+  const narrative: string[] = []
+  const deltas: string[] = []
+  let outcome: ActionResult['outcome'] = 'success'
+  if (actionRule === 'urban-observe') {
+    next.knownFacts = [...new Set([...next.knownFacts, '旧桥街区有一个可以求助的社区中心', '市场巷的生活成本变化很快'])]
+    next.world.currentFocus = '记住旧桥片区的公共生活线索'
+    narrative.push('你没有急着离开旧桥居所，而是沿着熟悉的街道观察了一圈。', '公告、公交站和邻居口中的地名逐渐连成一张还不完整的生活地图。')
+    deltas.push('获得街区线索')
+  } else if (actionRule === 'urban-notice') {
+    next.knownFacts = [...new Set([...next.knownFacts, '社区公告栏正在征集互助意见'])]
+    next.world.currentFocus = '决定要不要回应社区消息'
+    narrative.push('公告栏上的通知没有承诺立刻改变你的生活，只是把几个真实存在的选择摆到了你面前。')
+    deltas.push('获得社区公告')
+  } else if (actionRule === 'urban-meet') {
+    const npc = next.npcs.find((item) => item.id === 'npc-lin')
+    if (npc) { npc.met = true; npc.relationship = Math.max(npc.relationship, 40); npc.lastInteraction = '今天在社区中心第一次正式交谈'; npc.status = '准备下周的社区互助活动' }
+    next.knownFacts = [...new Set([...next.knownFacts, '林晚晴愿意把社区互助活动的细节告诉你'])]
+    next.player.reputation += 1
+    next.world.currentFocus = '考虑是否回应社区互助活动'
+    narrative.push('社区中心比你想象中安静。林晚晴没有替你判断问题，只先问你最近最想解决的是什么。', '你们的第一次交谈没有立刻给出答案，却留下了一个可以继续追问的方向。')
+    deltas.push('认识林晚晴', '声望 +1')
+  } else if (actionRule === 'urban-choose') {
+    next.knownFacts = [...new Set([...next.knownFacts, '你开始认真比较稳定、成长与关系三条生活方向'])]
+    next.world.currentFocus = '选择下一阶段愿意投入的方向'
+    narrative.push('你把手头的时间、钱和精力写在一张纸上，第一次认真比较自己真正承担得起什么。')
+    deltas.push('明确一个阶段方向')
+  } else if (actionRule === 'urban-opportunity') {
+    next.player.reputation += 1
+    next.knownFacts = [...new Set([...next.knownFacts, '你接下了一件需要继续跟进的小机会'])]
+    next.world.currentFocus = '把接下来的小机会做完'
+    narrative.push('机会并不宏大，却足够让你付出一点成本。你先把能确认的部分接下来，剩下的风险留到下一次判断。')
+    deltas.push('声望 +1', '接下待跟进机会')
+  } else if (actionRule === 'urban-recover') {
+    next.player.health = Math.min(next.player.maxHealth, next.player.health + 3)
+    next.player.stamina = Math.min(next.player.maxStamina, next.player.stamina + 10)
+    next.world.currentFocus = '重新看清手头的资源与节奏'
+    narrative.push('你把账目、行程和身体状态放在一起看了一遍。没有什么立刻变好，但下一步终于不再模糊。')
+    deltas.push('状态 +3', '精力 +10')
+  } else if (actionRule === 'urban-explore') {
+    next.knownFacts = [...new Set([...next.knownFacts, '你沿着旧桥片区边缘确认了一条安全路线'])]
+    next.world.currentFocus = '决定是否继续走向市场巷'
+    narrative.push('你沿着街区边缘走了一段，避开了不熟悉的岔路。城市没有一次性向你展开，但你记住了回来的路。')
+    deltas.push('确认一条安全路线')
+  } else if (actionRule === 'urban-study') {
+    next.player.reputation += 1
+    next.knownFacts = [...new Set([...next.knownFacts, '你第一次去青禾大学城旁听'])]
+    next.world.currentFocus = '把新的学习机会和现实成本放在一起考虑'
+    narrative.push('你第一次走进青禾大学城旁边的公共教室，发现学习机会并不神秘，但时间和交通成本都是真实的。')
+    deltas.push('声望 +1', '进入新的学习环境')
+  } else if (actionRule === 'urban-review') {
+    next.world.currentFocus = '根据最近的经历调整下周安排'
+    narrative.push('你回看最近的行动，没有急着给自己下结论。哪些承诺能继续，哪些只是当时的冲动，开始变得更清楚。')
+    deltas.push('完成一次生活复盘')
+  } else {
+    return null
+  }
+  return { outcome, narrative, deltas }
+}
+
 export function resolveAction(state: GameState, input: string, script: ScriptPackage): ActionResult {
   const cleanInput = input.trim()
   if (!cleanInput) return { outcome: 'refused', title: '还没有行动', narrative: ['先写下你想做的事，世界才知道该如何回应。'], feedback: '请输入一个具体行动。', timeLabel: '未推进时间', deltas: [], state }
@@ -299,10 +360,12 @@ export function resolveAction(state: GameState, input: string, script: ScriptPac
   let narrative: string[] = []
 
   const ageResult = resolveAgeAction(next, actionRule)
-  if (ageResult) {
-    outcome = ageResult.outcome
-    narrative = ageResult.narrative
-    deltas.push(...ageResult.deltas.filter((delta) => !deltas.includes(delta)))
+  const verifiedScriptResult = ageResult ? null : resolveVerifiedScriptAction(next, actionRule, script)
+  if (ageResult || verifiedScriptResult) {
+    const configuredResult = ageResult ?? verifiedScriptResult!
+    outcome = configuredResult.outcome
+    narrative = configuredResult.narrative
+    deltas.push(...configuredResult.deltas.filter((delta) => !deltas.includes(delta)))
   } else if (actionRule === 'market') {
     const npc = next.npcs.find((item) => item.id === 'mira')
     if (npc) { npc.met = true; npc.lastInteraction = '今天在集市第一次打照面' }
