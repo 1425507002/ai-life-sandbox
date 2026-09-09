@@ -219,6 +219,12 @@ describe('checkProviderConnection', () => {
     await expect(generateNarration(provider, { input: '整理房间', result: ['已整理房间'], state })).resolves.toEqual(['第一段', '第二段'])
   })
 
+  it('accepts plain text from a compatible chat completion as AI narrative', async () => {
+    const state = buildInitialState(getScript('western-world'))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: '你把窗边的物品重新归拢，房间终于有了可以继续生活的秩序。' } }] }), { status: 200 })))
+    await expect(generateNarration(provider, { input: '整理房间', result: ['已整理房间'], state })).resolves.toEqual(['你把窗边的物品重新归拢，房间终于有了可以继续生活的秩序。'])
+  })
+
   it('accepts only bounded AI incident candidates tied to existing NPCs', async () => {
     const state = buildInitialState(getScript('western-world'))
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: { title: '米拉送来一封短笺', body: '米拉让邻居捎来一封短笺，说她在集市听见了新的桥讯。', kind: 'encounter', tags: ['人物', '线索'], dueInTurns: 1, npcId: 'mira', relationshipDelta: 1 } }) } }] }), { status: 200 })))

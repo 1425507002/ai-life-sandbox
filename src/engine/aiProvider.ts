@@ -142,6 +142,18 @@ export interface NarrationRequest {
   state: GameState
 }
 
+function normalizePlainNarrative(content: string): string[] | null {
+  const paragraphs = content
+    .replace(/^```(?:text|markdown)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .split(/\n{2,}|(?<=[。！？])\s+(?=[^\s])/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((paragraph) => paragraph.slice(0, 180))
+  return paragraphs.length ? paragraphs : null
+}
+
 export async function generateNarration(config: ProviderConfig, request: NarrationRequest, signal?: AbortSignal): Promise<string[] | null> {
   if (!config.apiKey.trim() || !config.endpoint.trim() || !config.model.trim()) return null
   try {
@@ -159,7 +171,7 @@ export async function generateNarration(config: ProviderConfig, request: Narrati
     const content = extractCompletionText(payload)
     if (!content) return null
     const parsed = parseJsonContent<{ narrative?: unknown }>(content)
-    if (!parsed) return null
+    if (!parsed) return normalizePlainNarrative(content)
     if (Array.isArray(parsed.narrative) && parsed.narrative.every((item) => typeof item === 'string')) return parsed.narrative as string[]
     return null
   } catch {
