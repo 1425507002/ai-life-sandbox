@@ -130,6 +130,35 @@ test('slow model enhancement never blocks local action settlement beyond five se
   await expect(page.locator('.action-feedback')).toContainText('行动已经结算')
 })
 
+test('completed AI enhancement replaces the local scene narrative', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop-only AI integration flow')
+  let providerRequests = 0
+  await page.route('**/api/ai-proxy/zhipu', async (route) => {
+    providerRequests += 1
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    const request = route.request().postDataJSON() as { messages?: Array<{ content?: string }> }
+    const system = request.messages?.[0]?.content ?? ''
+    if (system.includes('行动候选助手')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ actions: [] }) } }] }) })
+    }
+    if (system.includes('突发事件候选助手')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ incident: { title: 'AI 实测事件', body: '这是一条由模型返回、等待规则校验的事件候选。', kind: 'encounter', tags: ['AI'], dueInTurns: 1 } }) } }] }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ narrative: ['AI 实测叙事已返回。', '这段内容来自模型响应，不是本地模板。'] }) } }] }) })
+  })
+  await page.goto('/')
+  await page.locator('.nav-item').filter({ hasText: '设置' }).click()
+  await page.getByLabel('模型 Endpoint').fill('http://127.0.0.1:4175/api/ai-proxy/zhipu')
+  await page.getByLabel('模型 API Key').fill('integration-test-key-only')
+  await page.locator('.nav-item').filter({ hasText: '当前场景' }).click()
+  await page.locator('.action-card').first().click()
+  await expect(page.locator('.action-feedback')).toBeVisible()
+  await expect(page.getByText('AI 叙事正在生成')).toBeVisible({ timeout: 1000 })
+  await expect(page.getByText('AI 实测叙事已返回。')).toBeVisible({ timeout: 3000 })
+  await expect(page.getByText('这段内容来自模型响应，不是本地模板。')).toBeVisible()
+  expect(providerRequests).toBeGreaterThanOrEqual(2)
+})
+
 test('missing provider key never sends a model request', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop-only provider preflight')
   let providerRequests = 0
