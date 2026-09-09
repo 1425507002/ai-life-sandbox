@@ -300,11 +300,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     void (async () => {
       const requestIncident = Boolean(script.incidentPolicy?.enabled && session.state.turn % 4 === 0 && Math.random() < (script.incidentPolicy?.chance ?? 0))
-      const [narrativeAttempt, candidateAttempt, incidentAttempt] = await Promise.all([
-        withModelTimeoutResult((signal) => generateNarration(providerConfig, { input, result: result.narrative, state: result.state }, signal), null),
-        withModelTimeoutResult((signal) => generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }, signal), null),
-        requestIncident ? withModelTimeoutResult((signal) => generateIncident(providerConfig, { state: result.state, script }, signal), null) : Promise.resolve({ value: null, timedOut: false }),
-      ])
+      const narrativeAttempt = await withModelTimeoutResult((signal) => generateNarration(providerConfig, { input, result: result.narrative, state: result.state }, signal), null)
+      const candidateAttempt = narrativeAttempt.value
+        ? await withModelTimeoutResult((signal) => generateActionCandidates(providerConfig, { state: result.state, script, localCandidates: result.state.suggestedActions }, signal), null)
+        : { value: null, timedOut: false }
+      const incidentAttempt = requestIncident && narrativeAttempt.value
+        ? await withModelTimeoutResult((signal) => generateIncident(providerConfig, { state: result.state, script }, signal), null)
+        : { value: null, timedOut: false }
       const maybeNarrative = narrativeAttempt.value
       const maybeCandidates = candidateAttempt.value
       const maybeIncident = incidentAttempt.value
